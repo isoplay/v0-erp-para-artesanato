@@ -1,0 +1,26 @@
+{
+  "name": "Exclusiv Art - Gestao de Artesanato",
+  "short_name": "Exclusiv Art",
+  "description": "Sistema de gestao para artesanato religioso - tercos, pulseiras e chaveiros",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#C8BDE9",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "pt-BR"
+}
