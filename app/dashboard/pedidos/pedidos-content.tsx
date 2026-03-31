@@ -56,8 +56,6 @@ import {
   updatePedido,
   deletePedido,
   updatePedidoStatus,
-  generateWhatsAppMessage,
-  getWhatsAppUrl,
 } from './actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
