@@ -82,6 +82,45 @@ function getStatusInfo(status: StatusPedido) {
   return statusOptions.find((s) => s.value === status) || statusOptions[0]
 }
 
+function generateWhatsAppMessage(pedido: PedidoComItens): string {
+  const valorFinal = pedido.valor_total - pedido.desconto
+  const itensText = pedido.pedido_itens
+    .map((item) => `- ${item.produto.nome} (x${item.quantidade}): ${formatCurrency(item.subtotal)}`)
+    .join('\n')
+  
+  let message = `Ola ${pedido.cliente_nome}!\n\n`
+  message += `Seu pedido foi registrado:\n\n`
+  message += `${itensText}\n\n`
+  
+  if (pedido.desconto > 0) {
+    message += `Subtotal: ${formatCurrency(pedido.valor_total)}\n`
+    message += `Desconto: -${formatCurrency(pedido.desconto)}\n`
+  }
+  
+  message += `*Total: ${formatCurrency(valorFinal)}*\n\n`
+  
+  if (pedido.data_entrega) {
+    message += `Previsao de entrega: ${format(new Date(pedido.data_entrega), "dd 'de' MMMM", { locale: ptBR })}\n\n`
+  }
+  
+  message += `Obrigado pela preferencia!`
+  
+  return message
+}
+
+function getWhatsAppUrl(telefone: string, message: string): string {
+  // Remove non-numeric characters from phone number
+  const cleanPhone = telefone.replace(/\D/g, '')
+  
+  // Add Brazil country code if not present
+  const phoneWithCode = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+  
+  // Encode the message for URL
+  const encodedMessage = encodeURIComponent(message)
+  
+  return `https://wa.me/${phoneWithCode}?text=${encodedMessage}`
+}
+
 type ItemInput = {
   produto_id: string
   quantidade: number
