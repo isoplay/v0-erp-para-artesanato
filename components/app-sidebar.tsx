@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Wallet,
   Boxes,
+  CalendarDays,
 } from 'lucide-react'
 
 import {
@@ -44,6 +45,11 @@ const menuItems = [
     title: 'Pedidos',
     url: '/dashboard/pedidos',
     icon: ShoppingCart,
+  },
+  {
+    title: 'Calendario',
+    url: '/dashboard/calendario',
+    icon: CalendarDays,
   },
   {
     title: 'Financeiro',

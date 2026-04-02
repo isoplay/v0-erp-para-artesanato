@@ -31,16 +31,14 @@ export async function getDashboardMetrics() {
     console.error('Error fetching pending orders:', pendentesError)
   }
 
-  // Get low stock materials
-  const { data: materiaisBaixoEstoque, error: materiaisError } = await supabase
+  // Get all materials and filter for low stock (comparing two columns requires client-side filtering)
+  const { data: todosMateriais, error: materiaisError } = await supabase
     .from('materiais')
     .select('*')
-    .filter('quantidade_atual', 'lt', 'quantidade_minima')
 
-  // Alternative approach for low stock - get all and filter client side
-  const { data: todosMateriais } = await supabase
-    .from('materiais')
-    .select('*')
+  if (materiaisError) {
+    console.error('Error fetching materials:', materiaisError)
+  }
 
   const materiaisLowStock = todosMateriais?.filter(
     (m: Material) => m.quantidade_atual <= m.quantidade_minima

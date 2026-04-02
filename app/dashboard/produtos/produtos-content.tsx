@@ -502,6 +502,35 @@ export function ProdutosContent({
               {selectedProduto.descricao && (
                 <p className="text-sm text-muted-foreground">{selectedProduto.descricao}</p>
               )}
+              
+              {/* Profit Summary Card */}
+              {(() => {
+                const lucroUnitario = selectedProduto.preco_venda - selectedProduto.custo_producao
+                const margem = calculateMargin(selectedProduto.preco_venda, selectedProduto.custo_producao)
+                const lucroPorHora = selectedProduto.tempo_producao_minutos > 0 
+                  ? (lucroUnitario / selectedProduto.tempo_producao_minutos) * 60 
+                  : 0
+                return (
+                  <div className={`p-4 rounded-lg ${margem >= 50 ? 'bg-green-50 border border-green-200' : margem >= 30 ? 'bg-yellow-50 border border-yellow-200' : 'bg-red-50 border border-red-200'}`}>
+                    <p className="text-sm font-medium mb-2">Analise de Lucratividade</p>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div>
+                        <p className="text-lg font-bold">{formatCurrency(lucroUnitario)}</p>
+                        <p className="text-xs text-muted-foreground">Lucro/unidade</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold">{margem.toFixed(0)}%</p>
+                        <p className="text-xs text-muted-foreground">Margem</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold">{formatCurrency(lucroPorHora)}</p>
+                        <p className="text-xs text-muted-foreground">Lucro/hora</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Preco de Venda</p>
@@ -512,14 +541,14 @@ export function ProdutosContent({
                   <p className="font-medium">{formatCurrency(selectedProduto.custo_producao)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Margem de Lucro</p>
-                  <p className="font-medium">
-                    {calculateMargin(selectedProduto.preco_venda, selectedProduto.custo_producao).toFixed(1)}%
-                  </p>
-                </div>
-                <div>
                   <p className="text-sm text-muted-foreground">Tempo de Producao</p>
                   <p className="font-medium">{selectedProduto.tempo_producao_minutos} minutos</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <Badge variant={selectedProduto.ativo ? 'default' : 'secondary'}>
+                    {selectedProduto.ativo ? 'Ativo' : 'Inativo'}
+                  </Badge>
                 </div>
               </div>
               {selectedProduto.produto_materiais.length > 0 && (

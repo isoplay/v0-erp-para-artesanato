@@ -62,6 +62,9 @@ import { useRouter } from 'next/navigation'
 import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { ClienteAutocomplete } from '@/components/cliente-autocomplete'
+import { ProductionChecker } from '@/components/production-checker'
+import type { ClienteHistorico } from './actions'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -80,6 +83,45 @@ const statusOptions: { value: StatusPedido; label: string; className: string }[]
 
 function getStatusInfo(status: StatusPedido) {
   return statusOptions.find((s) => s.value === status) || statusOptions[0]
+}
+
+function generateWhatsAppMessage(pedido: PedidoComItens): string {
+  const valorFinal = pedido.valor_total - pedido.desconto
+  const itensText = pedido.pedido_itens
+    .map((item) => `- ${item.produto.nome} (x${item.quantidade}): ${formatCurrency(item.subtotal)}`)
+    .join('\n')
+  
+  let message = `Ola ${pedido.cliente_nome}!\n\n`
+  message += `Seu pedido foi registrado:\n\n`
+  message += `${itensText}\n\n`
+  
+  if (pedido.desconto > 0) {
+    message += `Subtotal: ${formatCurrency(pedido.valor_total)}\n`
+    message += `Desconto: -${formatCurrency(pedido.desconto)}\n`
+  }
+  
+  message += `*Total: ${formatCurrency(valorFinal)}*\n\n`
+  
+  if (pedido.data_entrega) {
+    message += `Previsao de entrega: ${format(new Date(pedido.data_entrega), "dd 'de' MMMM", { locale: ptBR })}\n\n`
+  }
+  
+  message += `Obrigado pela preferencia!`
+  
+  return message
+}
+
+function getWhatsAppUrl(telefone: string, message: string): string {
+  // Remove non-numeric characters from phone number
+  const cleanPhone = telefone.replace(/\D/g, '')
+  
+  // Add Brazil country code if not present
+  const phoneWithCode = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+  
+  // Encode the message for URL
+  const encodedMessage = encodeURIComponent(message)
+  
+  return `https://wa.me/${phoneWithCode}?text=${encodedMessage}`
 }
 
 type ItemInput = {
@@ -104,6 +146,24 @@ export function PedidosContent({
   const [selectedItens, setSelectedItens] = useState<ItemInput[]>([])
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  
+  // Cliente form states
+  const [clienteNome, setClienteNome] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
+  const [clienteEndereco, setClienteEndereco] = useState('')
+
+  function handleSelectCliente(cliente: ClienteHistorico) {
+    setClienteNome(cliente.cliente_nome)
+    setClienteTelefone(cliente.cliente_telefone || '')
+    setClienteEndereco(cliente.cliente_endereco || '')
+  }
+
+  function resetClienteForm() {
+    setClienteNome('')
+    setClienteTelefone('')
+    setClienteEndereco('')
+    setSelectedItens([])
+  }
 
   const filteredPedidos = pedidos.filter((p) => {
     const matchesSearch =
@@ -254,7 +314,7 @@ export function PedidosContent({
           open={isAddOpen}
           onOpenChange={(open) => {
             setIsAddOpen(open)
-            if (!open) setSelectedItens([])
+            if (!open) resetClienteForm()
           }}
         >
           <DialogTrigger asChild>
@@ -266,26 +326,42 @@ export function PedidosContent({
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Novo Pedido</DialogTitle>
-              <DialogDescription>Cadastre um novo pedido de cliente</DialogDescription>
+              <DialogDescription>Cadastre um novo pedido de cliente. Comece digitando o nome para ver clientes anteriores.</DialogDescription>
             </DialogHeader>
             <form action={handleCreate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cliente_nome">Nome do Cliente *</Label>
-                  <Input id="cliente_nome" name="cliente_nome" required placeholder="Nome completo" />
+                  <ClienteAutocomplete
+                    id="cliente_nome"
+                    name="cliente_nome"
+                    required
+                    value={clienteNome}
+                    onChange={setClienteNome}
+                    onSelectCliente={handleSelectCliente}
+                    placeholder="Digite o nome do cliente..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cliente_telefone">Telefone (WhatsApp)</Label>
                   <Input
                     id="cliente_telefone"
                     name="cliente_telefone"
+                    value={clienteTelefone}
+                    onChange={(e) => setClienteTelefone(e.target.value)}
                     placeholder="(11) 99999-9999"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cliente_endereco">Endereco</Label>
-                <Input id="cliente_endereco" name="cliente_endereco" placeholder="Endereco completo" />
+                <Input 
+                  id="cliente_endereco" 
+                  name="cliente_endereco" 
+                  value={clienteEndereco}
+                  onChange={(e) => setClienteEndereco(e.target.value)}
+                  placeholder="Endereco completo" 
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -371,6 +447,9 @@ export function PedidosContent({
                   </div>
                 )}
               </div>
+
+              {/* Production Check */}
+              <ProductionChecker itens={selectedItens} />
 
               <div className="space-y-2">
                 <Label htmlFor="observacoes">Observacoes</Label>
