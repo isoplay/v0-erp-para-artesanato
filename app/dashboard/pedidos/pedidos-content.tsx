@@ -62,6 +62,9 @@ import { useRouter } from 'next/navigation'
 import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { ClienteAutocomplete } from '@/components/cliente-autocomplete'
+import { ProductionChecker } from '@/components/production-checker'
+import type { ClienteHistorico } from './actions'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -143,6 +146,24 @@ export function PedidosContent({
   const [selectedItens, setSelectedItens] = useState<ItemInput[]>([])
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  
+  // Cliente form states
+  const [clienteNome, setClienteNome] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
+  const [clienteEndereco, setClienteEndereco] = useState('')
+
+  function handleSelectCliente(cliente: ClienteHistorico) {
+    setClienteNome(cliente.cliente_nome)
+    setClienteTelefone(cliente.cliente_telefone || '')
+    setClienteEndereco(cliente.cliente_endereco || '')
+  }
+
+  function resetClienteForm() {
+    setClienteNome('')
+    setClienteTelefone('')
+    setClienteEndereco('')
+    setSelectedItens([])
+  }
 
   const filteredPedidos = pedidos.filter((p) => {
     const matchesSearch =
@@ -293,7 +314,7 @@ export function PedidosContent({
           open={isAddOpen}
           onOpenChange={(open) => {
             setIsAddOpen(open)
-            if (!open) setSelectedItens([])
+            if (!open) resetClienteForm()
           }}
         >
           <DialogTrigger asChild>
@@ -305,26 +326,42 @@ export function PedidosContent({
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Novo Pedido</DialogTitle>
-              <DialogDescription>Cadastre um novo pedido de cliente</DialogDescription>
+              <DialogDescription>Cadastre um novo pedido de cliente. Comece digitando o nome para ver clientes anteriores.</DialogDescription>
             </DialogHeader>
             <form action={handleCreate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cliente_nome">Nome do Cliente *</Label>
-                  <Input id="cliente_nome" name="cliente_nome" required placeholder="Nome completo" />
+                  <ClienteAutocomplete
+                    id="cliente_nome"
+                    name="cliente_nome"
+                    required
+                    value={clienteNome}
+                    onChange={setClienteNome}
+                    onSelectCliente={handleSelectCliente}
+                    placeholder="Digite o nome do cliente..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cliente_telefone">Telefone (WhatsApp)</Label>
                   <Input
                     id="cliente_telefone"
                     name="cliente_telefone"
+                    value={clienteTelefone}
+                    onChange={(e) => setClienteTelefone(e.target.value)}
                     placeholder="(11) 99999-9999"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cliente_endereco">Endereco</Label>
-                <Input id="cliente_endereco" name="cliente_endereco" placeholder="Endereco completo" />
+                <Input 
+                  id="cliente_endereco" 
+                  name="cliente_endereco" 
+                  value={clienteEndereco}
+                  onChange={(e) => setClienteEndereco(e.target.value)}
+                  placeholder="Endereco completo" 
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -410,6 +447,9 @@ export function PedidosContent({
                   </div>
                 )}
               </div>
+
+              {/* Production Check */}
+              <ProductionChecker itens={selectedItens} />
 
               <div className="space-y-2">
                 <Label htmlFor="observacoes">Observacoes</Label>

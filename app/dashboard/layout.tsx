@@ -2,6 +2,7 @@ import Image from 'next/image'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt'
+import { GlobalSearch } from '@/components/global-search'
 
 export default function DashboardLayout({
   children,
@@ -23,7 +24,9 @@ export default function DashboardLayout({
             />
           </div>
           <span className="font-semibold text-foreground md:hidden">Exclusiv Art</span>
-          <div className="flex-1" />
+          <div className="flex-1 flex justify-center md:justify-start md:ml-4">
+            <GlobalSearch />
+          </div>
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6 bg-background min-h-[calc(100vh-3.5rem)]">
           {children}

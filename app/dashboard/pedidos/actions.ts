@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import type { Pedido, PedidoComItens, Produto, StatusPedido } from '@/lib/types/database'
+import type { Pedido, PedidoComItens, Produto, StatusPedido, Material, ProdutoMaterial } from '@/lib/types/database'
 
 export async function getPedidos() {
   const supabase = await createClient()
@@ -244,4 +244,160 @@ export async function deletePedido(id: string) {
   revalidatePath('/dashboard/pedidos', 'max')
   revalidatePath('/dashboard', 'max')
   return { success: true }
+}
+
+export type ClienteHistorico = {
+  cliente_nome: string
+  cliente_telefone: string | null
+  cliente_endereco: string | null
+  total_pedidos: number
+  valor_total: number
+  ultimo_pedido: string
+}
+
+export type MaterialNecessario = {
+  material_id: string
+  material_nome: string
+  unidade: string
+  quantidade_necessaria: number
+  quantidade_disponivel: number
+  suficiente: boolean
+}
+
+export type VerificacaoProducao = {
+  produto_id: string
+  produto_nome: string
+  quantidade: number
+  pode_produzir: boolean
+  quantidade_maxima: number
+  materiais: MaterialNecessario[]
+  tempo_producao_total: number
+}
+
+export async function verificarMateriaisProducao(
+  itens: { produto_id: string; quantidade: number }[]
+): Promise<VerificacaoProducao[]> {
+  const supabase = await createClient()
+  
+  // Get all product compositions with materials
+  const { data: produtos, error: produtosError } = await supabase
+    .from('produtos')
+    .select(`
+      id,
+      nome,
+      tempo_producao_minutos,
+      produto_materiais (
+        quantidade,
+        material:materiais (
+          id,
+          nome,
+          unidade,
+          quantidade_atual
+        )
+      )
+    `)
+    .in('id', itens.map(i => i.produto_id))
+
+  if (produtosError || !produtos) {
+    console.error('Error fetching products:', produtosError)
+    return []
+  }
+
+  const verificacoes: VerificacaoProducao[] = []
+  
+  // Create a map to track material usage across all items
+  const materialUsado = new Map<string, number>()
+
+  for (const item of itens) {
+    const produto = produtos.find(p => p.id === item.produto_id)
+    if (!produto) continue
+
+    const materiaisNecessarios: MaterialNecessario[] = []
+    let podeProduzir = true
+    let quantidadeMaxima = Infinity
+
+    for (const pm of produto.produto_materiais) {
+      if (!pm.material) continue
+      
+      const material = pm.material as Material
+      const quantidadeNecessaria = pm.quantidade * item.quantidade
+      const jaUsado = materialUsado.get(material.id) || 0
+      const disponivel = material.quantidade_atual - jaUsado
+      const suficiente = disponivel >= quantidadeNecessaria
+
+      if (!suficiente) {
+        podeProduzir = false
+      }
+
+      // Calculate max units that can be produced
+      const maxUnidades = pm.quantidade > 0 ? Math.floor(disponivel / pm.quantidade) : Infinity
+      quantidadeMaxima = Math.min(quantidadeMaxima, maxUnidades)
+
+      materiaisNecessarios.push({
+        material_id: material.id,
+        material_nome: material.nome,
+        unidade: material.unidade,
+        quantidade_necessaria: quantidadeNecessaria,
+        quantidade_disponivel: disponivel,
+        suficiente,
+      })
+
+      // Update used materials
+      materialUsado.set(material.id, jaUsado + quantidadeNecessaria)
+    }
+
+    verificacoes.push({
+      produto_id: item.produto_id,
+      produto_nome: produto.nome,
+      quantidade: item.quantidade,
+      pode_produzir: podeProduzir,
+      quantidade_maxima: quantidadeMaxima === Infinity ? 0 : quantidadeMaxima,
+      materiais: materiaisNecessarios,
+      tempo_producao_total: produto.tempo_producao_minutos * item.quantidade,
+    })
+  }
+
+  return verificacoes
+}
+
+export async function searchClientes(query: string): Promise<ClienteHistorico[]> {
+  if (!query || query.length < 2) return []
+  
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('pedidos')
+    .select('cliente_nome, cliente_telefone, cliente_endereco, valor_total, desconto, created_at')
+    .ilike('cliente_nome', `%${query}%`)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error || !data) {
+    console.error('Error searching clients:', error)
+    return []
+  }
+
+  // Group by client name and aggregate
+  const clienteMap = new Map<string, ClienteHistorico>()
+  
+  for (const pedido of data) {
+    const existing = clienteMap.get(pedido.cliente_nome)
+    const valorLiquido = pedido.valor_total - pedido.desconto
+    
+    if (existing) {
+      existing.total_pedidos++
+      existing.valor_total += valorLiquido
+    } else {
+      clienteMap.set(pedido.cliente_nome, {
+        cliente_nome: pedido.cliente_nome,
+        cliente_telefone: pedido.cliente_telefone,
+        cliente_endereco: pedido.cliente_endereco,
+        total_pedidos: 1,
+        valor_total: valorLiquido,
+        ultimo_pedido: pedido.created_at,
+      })
+    }
+  }
+
+  return Array.from(clienteMap.values()).slice(0, 5)
 }

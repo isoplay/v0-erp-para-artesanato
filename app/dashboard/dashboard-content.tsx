@@ -2,6 +2,9 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 import {
   ShoppingCart,
   TrendingUp,
@@ -14,6 +17,28 @@ import {
 import type { Pedido, Material } from '@/lib/types/database'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { useState, useEffect } from 'react'
+
+function RelativeTime({ date }: { date: string }) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return <span className="text-xs text-muted-foreground">...</span>
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      {formatDistanceToNow(new Date(date), {
+        addSuffix: true,
+        locale: ptBR,
+      })}
+    </span>
+  )
+}
 
 type DashboardMetrics = {
   totalPedidosMes: number
@@ -78,6 +103,30 @@ export function DashboardContent({ metrics }: { metrics: DashboardMetrics }) {
           Visao geral do seu negocio em {currentMonth}
         </p>
       </div>
+
+      {/* Low Stock Alert */}
+      {metrics.materiaisLowStock.length > 0 && (
+        <Alert variant="destructive" className="border-red-200 bg-red-50">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle className="text-red-800">Atencao: Estoque Baixo</AlertTitle>
+          <AlertDescription className="text-red-700">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {metrics.materiaisLowStock.length} material(is) precisam de reposicao:{' '}
+                <span className="font-medium">
+                  {metrics.materiaisLowStock.slice(0, 3).map(m => m.nome).join(', ')}
+                  {metrics.materiaisLowStock.length > 3 && ` e mais ${metrics.materiaisLowStock.length - 3}`}
+                </span>
+              </span>
+              <Button asChild size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-100">
+                <Link href="/dashboard/estoque">
+                  Ver Estoque
+                </Link>
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -206,12 +255,7 @@ export function DashboardContent({ metrics }: { metrics: DashboardMetrics }) {
                   >
                     <div className="flex flex-col gap-1">
                       <span className="font-medium text-sm">{pedido.cliente_nome}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(pedido.created_at), {
-                          addSuffix: true,
-                          locale: ptBR,
-                        })}
-                      </span>
+                      <RelativeTime date={pedido.created_at} />
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge variant="secondary" className={getStatusColor(pedido.status)}>
