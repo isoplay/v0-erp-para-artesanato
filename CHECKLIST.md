@@ -19,7 +19,7 @@
 
 ## 📦 Dependências Verificadas
 
-**Já instaladas no package.json:**
+**Já pré-instaladas no package.json:**
 - ✅ next@16.2.0
 - ✅ react@19.2.4
 - ✅ @supabase/supabase-js@2.49.1
