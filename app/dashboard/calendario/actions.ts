@@ -1,0 +1,27 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import type { Pedido } from '@/lib/types/database'
+
+export type PedidoCalendario = Pick<
+  Pedido,
+  'id' | 'cliente_nome' | 'cliente_contato' | 'prazo_entrega' | 'status' | 'valor_total'
+>
+
+export async function getPedidosComEntrega(): Promise<PedidoCalendario[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('pedidos')
+    .select('id, cliente_nome, cliente_contato, prazo_entrega, status, valor_total')
+    .not('prazo_entrega', 'is', null)
+    .in('status', ['em_orcamento', 'aguardando_material', 'em_producao'])
+    .order('prazo_entrega', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching orders:', error)
+    return []
+  }
+
+  return data || []
+}

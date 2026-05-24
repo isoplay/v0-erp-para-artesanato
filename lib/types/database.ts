@@ -1,0 +1,235 @@
+export type Material = {
+  id: string
+  nome: string
+  tipo: string
+  preco_compra: number
+  quantidade: number
+  quantidade_atual?: number
+  quantidade_minima?: number
+  unidade: string
+  custo_unitario: number
+  descricao?: string | null
+  fornecedor?: string | null
+  imagem_url?: string | null
+  created_at?: string
+  data_pedido?: string
+  updated_at: string
+}
+
+export type Produto = {
+  id: string
+  nome: string
+  tipo: 'terco' | 'pulseira' | 'chaveiro' | 'outro'
+  preco_venda: number
+  margem_lucro: number
+  ativo: boolean
+  data_pedido: string
+  updated_at: string
+}
+
+export type ProdutoMaterial = {
+  id: string
+  produto_id: string
+  material_id: string
+  quantidade_usada: number
+  // Joins
+  material?: Material
+  produto?: Produto
+}
+
+export type ProdutoComMateriais = Produto & {
+  produto_materiais: (ProdutoMaterial & { material: Material })[]
+}
+
+export type StatusPedido =
+  | 'em_orcamento'
+  | 'aguardando_material'
+  | 'em_producao'
+  | 'finalizado'
+  | 'cancelado'
+
+export type Pedido = {
+  id: string
+  cliente_nome: string
+  cliente_contato: string | null
+  prazo_entrega: string | null
+  status: StatusPedido
+  prioridade: number
+  observacoes: string | null
+  valor_total: number
+  data_pedido: string
+  updated_at: string
+}
+
+export type PedidoItem = {
+  id: string
+  pedido_id: string
+  produto_id: string
+  quantidade: number
+  valor_unitario: number
+  valor_total: number
+  // Joins
+  produto?: Produto
+}
+
+export type PedidoComItens = Pedido & {
+  pedido_itens: (PedidoItem & { produto: Produto })[]
+}
+
+export type CategoriaDespesa =
+  | 'material'
+  | 'ferramenta'
+  | 'embalagem'
+  | 'frete'
+  | 'marketing'
+  | 'outro'
+
+export type Despesa = {
+  id: string
+  descricao: string
+  valor: number
+  categoria: CategoriaDespesa
+  data: string
+  data_pedido: string
+}
+
+export type TipoMovimentacao = 'entrada' | 'saida'
+
+export type MovimentacaoEstoque = {
+  id: string
+  material_id: string
+  tipo: TipoMovimentacao
+  quantidade: number
+  motivo: string | null
+  pedido_id: string | null
+  data_pedido: string
+  // Joins
+  material?: Material
+}
+
+export type PedidoItemMaterial = {
+  id: string
+  pedido_item_id: string
+  material_id: string
+  quantidade: number
+  // Joins
+  material?: Material
+  pedido_item?: PedidoItem
+}
+
+export type PedidoItemComMateriais = PedidoItem & {
+  pedido_itens_materiais?: PedidoItemMaterial[]
+}
+
+// Dashboard metrics view
+export type DashboardMetrics = {
+  total_pedidos_mes: number
+  receita_mes: number
+  pedidos_pendentes: number
+  materiais_baixo_estoque: number
+}
+
+// ============================================
+// Item Builder Types (New)
+// ============================================
+
+export type CategoriaProduto = {
+  id: string
+  nome: string
+  descricao: string | null
+  ativo: boolean
+  ordem: number
+  data_pedido: string
+  updated_at: string
+}
+
+export type VariacaoTipo = {
+  id: string
+  categoria_id: string
+  nome: string
+  descricao: string | null
+  ativo: boolean
+  ordem: number
+  data_pedido: string
+  updated_at: string
+  // Joins
+  categoria?: CategoriaProduto
+}
+
+export type GrupoComponente = {
+  id: string
+  categoria_id: string
+  nome: string
+  descricao: string | null
+  obrigatorio: boolean
+  permite_multipla_selecao: boolean
+  ordem: number
+  ativo: boolean
+  data_pedido: string
+  updated_at: string
+  // Joins
+  categoria?: CategoriaProduto
+  componentes?: ComponenteEstoque[]
+}
+
+export type ComponenteEstoque = {
+  id: string
+  grupo_id: string
+  material_id: string
+  margem_lucro: number
+  ativo: boolean
+  ordem: number
+  data_pedido: string
+  updated_at: string
+  // Joins
+  grupo?: GrupoComponente
+  material?: Material
+}
+
+export type ConfiguracaoMaodeobra = {
+  id: string
+  categoria_id: string
+  valor_maodeobra: number
+  descricao: string | null
+  updated_at: string
+  // Joins
+  categoria?: CategoriaProduto
+}
+
+// View types for Item Builder UI
+export type CategoriaCompleta = {
+  categoria_id: string
+  categoria_nome: string
+  categoria_descricao: string | null
+  categoria_ativo: boolean
+  variacao_id: string | null
+  variacao_nome: string | null
+  variacao_descricao: string | null
+  variacao_ativa: boolean | null
+  grupo_id: string | null
+  grupo_nome: string | null
+  grupo_descricao: string | null
+  grupo_obrigatorio: boolean | null
+  permite_multipla_selecao: boolean | null
+  material_id: string | null
+  material_nome: string | null
+  preco_compra: number | null
+  custo_unitario: number | null
+  margem_lucro: number | null
+  preco_sugerido: number | null
+  estoque_quantidade: number | null
+  valor_maodeobra: number | null
+}
+
+export type ComponenteDisponivel = {
+  grupo_id: string
+  grupo_nome: string
+  categoria_id: string
+  material_id: string
+  material_nome: string
+  custo_unitario: number
+  margem_lucro: number
+  preco_venda: number
+  estoque_atual: number
+  imagem_url: string | null
+}
