@@ -15,7 +15,7 @@ export async function getPedidosComEntrega(): Promise<PedidoCalendario[]> {
     .from('pedidos')
     .select('id, cliente_nome, cliente_contato, prazo_entrega, status, valor_total')
     .not('prazo_entrega', 'is', null)
-    .in('status', ['em_orcamento', 'aguardando_material', 'em_producao'])
+    .in('status', ['orcamento', 'confirmado', 'em_producao', 'pronto'])
     .order('prazo_entrega', { ascending: true })
 
   if (error) {

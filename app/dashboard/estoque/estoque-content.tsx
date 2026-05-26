@@ -152,8 +152,13 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
   }
 
   function getStockStatus(material: Material) {
-    if (getEstoqueAtual(material) <= 0) {
+    const atual = getEstoqueAtual(material)
+    const minimo = material.quantidade_minima ?? 30
+    if (atual <= 0) {
       return { label: 'Sem Estoque', className: 'bg-red-100 text-red-800' }
+    }
+    if (atual <= minimo) {
+      return { label: 'Estoque Baixo', className: 'bg-amber-100 text-amber-800' }
     }
     return { label: 'OK', className: 'bg-green-100 text-green-800' }
   }
@@ -242,7 +247,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="quantidade">Quantidade *</Label>
+                  <Label htmlFor="quantidade">Quantidade Inicial *</Label>
                   <Input
                     id="quantidade"
                     name="quantidade"
@@ -253,17 +258,28 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="preco_compra">Preco de Compra *</Label>
+                  <Label htmlFor="quantidade_minima">Estoque Minimo *</Label>
                   <Input
-                    id="preco_compra"
-                    name="preco_compra"
+                    id="quantidade_minima"
+                    name="quantidade_minima"
                     type="number"
                     step="0.01"
                     required
-                    defaultValue="0"
-                    placeholder="R$"
+                    defaultValue="30"
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="custo_unitario">Custo unitario (R$) *</Label>
+                <Input
+                  id="custo_unitario"
+                  name="custo_unitario"
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  defaultValue="0"
+                  placeholder="Ex: 0,15"
+                />
               </div>
               <DialogFooter>
                 <DialogClose asChild>
@@ -471,23 +487,23 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   </div>
                 )}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-unidade">Unidade *</Label>
+                <Select value={editUnidade} onValueChange={setEditUnidade}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {unidades.map((u) => (
+                      <SelectItem key={u.value} value={u.value}>
+                        {u.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <input type="hidden" name="unidade" value={editUnidade} />
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-unidade">Unidade *</Label>
-                  <Select value={editUnidade} onValueChange={setEditUnidade}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {unidades.map((u) => (
-                        <SelectItem key={u.value} value={u.value}>
-                          {u.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <input type="hidden" name="unidade" value={editUnidade} />
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-quantidade">Quantidade</Label>
                   <Input
@@ -498,15 +514,26 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                     defaultValue={getEstoqueAtual(selectedMaterial)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-quantidade_minima">Estoque Minimo</Label>
+                  <Input
+                    id="edit-quantidade_minima"
+                    name="quantidade_minima"
+                    type="number"
+                    step="0.01"
+                    required
+                    defaultValue={selectedMaterial.quantidade_minima ?? 30}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-preco_compra">Preco de Compra</Label>
+                <Label htmlFor="edit-custo_unitario">Custo unitario (R$)</Label>
                 <Input
-                  id="edit-preco_compra"
-                  name="preco_compra"
-                  type="number"
-                  step="0.01"
-                  defaultValue={selectedMaterial.preco_compra}
+                  id="edit-custo_unitario"
+                  name="custo_unitario"
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={selectedMaterial.custo_unitario ?? 0}
                 />
               </div>
               <DialogFooter>

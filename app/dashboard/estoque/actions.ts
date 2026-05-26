@@ -4,6 +4,15 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { Material, TipoMovimentacao } from '@/lib/types/database'
 
+function parsePtBrNumber(raw: FormDataEntryValue | null): number {
+  const s = String(raw ?? '').trim()
+  if (!s) return 0
+  // Remove milhares e converte decimal ',' -> '.'
+  const normalized = s.replace(/\./g, '').replace(',', '.')
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : 0
+}
+
 export async function getMateriais() {
   const supabase = await createClient()
   
@@ -71,8 +80,11 @@ export async function createMaterial(formData: FormData) {
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
-  const quantidade = parseFloat(formData.get('quantidade') as string) || 0
-  const preco_compra = parseFloat(formData.get('preco_compra') as string) || 0
+  const quantidade = parsePtBrNumber(formData.get('quantidade'))
+  const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
+  const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
+  // Fallback (compat): se ainda vier preco_compra do form antigo
+  const preco_compra_input = parsePtBrNumber(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
 
   let imagem_url = null
@@ -80,15 +92,28 @@ export async function createMaterial(formData: FormData) {
     imagem_url = await uploadImagemMaterial(imagem)
   }
 
-  const { error } = await supabase.from('materiais').insert({
+  // Banco calcula `custo_unitario` como `preco_compra / quantidade`.
+  // No formulário, o usuário digita o custo unitário em R$.
+  const preco_compra =
+    custo_unitario_input > 0 ? custo_unitario_input * quantidade : preco_compra_input
+
+  const insertData: Record<string, unknown> = {
     nome,
     tipo,
     unidade,
     quantidade,
     quantidade_atual: quantidade,
+    quantidade_minima,
     preco_compra,
-    imagem_url,
-  })
+  }
+
+  // Não enviar `imagem_url` quando não houver upload. Isso evita erros
+  // quando o PostgREST ainda está com schema cache desatualizado.
+  if (imagem_url) {
+    insertData.imagem_url = imagem_url
+  }
+
+  const { error } = await supabase.from('materiais').insert(insertData)
 
   if (error) {
     console.error('Error creating material:', error)
@@ -105,8 +130,11 @@ export async function updateMaterial(id: string, formData: FormData) {
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
-  const quantidade = parseFloat(formData.get('quantidade') as string) || 0
-  const preco_compra = parseFloat(formData.get('preco_compra') as string) || 0
+  const quantidade = parsePtBrNumber(formData.get('quantidade'))
+  const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
+  const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
+  // Fallback (compat): se ainda vier preco_compra do form antigo
+  const preco_compra_input = parsePtBrNumber(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
 
   let imagem_url = undefined
@@ -114,12 +142,16 @@ export async function updateMaterial(id: string, formData: FormData) {
     imagem_url = await uploadImagemMaterial(imagem)
   }
 
+  const preco_compra =
+    custo_unitario_input > 0 ? custo_unitario_input * quantidade : preco_compra_input
+
   const updateData: Record<string, unknown> = {
     nome,
     tipo,
     unidade,
     quantidade,
     quantidade_atual: quantidade,
+    quantidade_minima,
     preco_compra,
   }
 

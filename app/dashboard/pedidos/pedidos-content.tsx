@@ -1,11 +1,21 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Dialog,
   DialogContent,
@@ -51,14 +61,18 @@ import {
   Phone,
 } from 'lucide-react'
 import type { Produto, PedidoComItens, StatusPedido, Material } from '@/lib/types/database'
+import { STATUS_PEDIDO_OPTIONS } from '@/lib/types/database'
 import {
   createPedido,
   updatePedido,
   deletePedido,
   updatePedidoStatus,
+  getMateriaisBaixaPedido,
+  type MaterialBaixaPreview,
 } from './actions'
+import { getComposicaoProduto } from '../produtos/actions'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -74,13 +88,7 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-const statusOptions: { value: StatusPedido; label: string; className: string }[] = [
-  { value: 'em_orcamento', label: 'Em Orcamento', className: 'bg-yellow-100 text-yellow-800' },
-  { value: 'aguardando_material', label: 'Aguardando Material', className: 'bg-orange-100 text-orange-800' },
-  { value: 'em_producao', label: 'Em Producao', className: 'bg-blue-100 text-blue-800' },
-  { value: 'finalizado', label: 'Finalizado', className: 'bg-green-100 text-green-800' },
-  { value: 'cancelado', label: 'Cancelado', className: 'bg-red-100 text-red-800' },
-]
+const statusOptions = STATUS_PEDIDO_OPTIONS
 
 function getStatusInfo(status: StatusPedido) {
   return statusOptions.find((s) => s.value === status) || statusOptions[0]
@@ -147,11 +155,25 @@ export function PedidosContent({
   const [selectedItens, setSelectedItens] = useState<ItemInput[]>([])
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('novo') === '1') {
+      setIsAddOpen(true)
+    }
+  }, [searchParams])
   
   // Estados para seleção de materiais
   const [isMaterialsOpen, setIsMaterialsOpen] = useState(false)
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null)
   const [selectedMateraisTemp, setSelectedMateraisTemp] = useState<Array<{ material_id: string; quantidade: number }>>([])
+  const [confirmStatusOpen, setConfirmStatusOpen] = useState(false)
+  const [pendingStatusChange, setPendingStatusChange] = useState<{
+    pedidoId: string
+    status: StatusPedido
+    clienteNome: string
+  } | null>(null)
+  const [materiaisBaixaPreview, setMateriaisBaixaPreview] = useState<MaterialBaixaPreview[]>([])
   
   // Cliente form states
   const [clienteNome, setClienteNome] = useState('')
@@ -204,8 +226,37 @@ export function PedidosContent({
       if (produto) {
         updated[index].valor_unitario = produto.preco_venda
       }
-    } else if (field === 'quantidade') {
-      updated[index].quantidade = value as number
+      setSelectedItens(updated)
+      if (produto) {
+        startTransition(async () => {
+          const composicao = await getComposicaoProduto(produto.id)
+          setSelectedItens((prev) => {
+            const copy = [...prev]
+            if (!copy[index]) return copy
+            copy[index] = {
+              ...copy[index],
+              materiais: composicao.map((c) => ({
+                material_id: c.material_id,
+                quantidade: c.quantidade_usada * copy[index].quantidade,
+              })),
+            }
+            return copy
+          })
+        })
+      }
+      return
+    }
+
+    if (field === 'quantidade') {
+      const oldQtd = updated[index].quantidade
+      const qtd = value as number
+      updated[index].quantidade = qtd
+      if (updated[index].materiais?.length && oldQtd > 0) {
+        updated[index].materiais = updated[index].materiais!.map((m) => ({
+          ...m,
+          quantidade: (m.quantidade / oldQtd) * qtd,
+        }))
+      }
     } else {
       updated[index].valor_unitario = value as number
     }
@@ -306,11 +357,51 @@ export function PedidosContent({
     })
   }
 
-  async function handleStatusChange(id: string, status: StatusPedido) {
+  async function handleStatusChange(
+    id: string,
+    status: StatusPedido,
+    clienteNome: string,
+    estoqueBaixado?: boolean
+  ) {
+    if ((status === 'pronto' || status === 'entregue') && !estoqueBaixado) {
+      const preview = await getMateriaisBaixaPedido(id)
+      if (preview.length === 0) {
+        toast.error('Este pedido nao possui materiais para baixar. Verifique a composicao dos produtos.')
+        return
+      }
+      setMateriaisBaixaPreview(preview)
+      setPendingStatusChange({ pedidoId: id, status, clienteNome })
+      setConfirmStatusOpen(true)
+      return
+    }
+
     startTransition(async () => {
       const result = await updatePedidoStatus(id, status)
       if (result.success) {
         toast.success('Status atualizado!')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Erro ao atualizar status')
+      }
+    })
+  }
+
+  function confirmStatusChange() {
+    if (!pendingStatusChange) return
+    const status = pendingStatusChange.status
+    startTransition(async () => {
+      const result = await updatePedidoStatus(
+        pendingStatusChange.pedidoId,
+        pendingStatusChange.status
+      )
+      if (result.success) {
+        toast.success(
+          status === 'pronto'
+            ? 'Pedido pronto e estoque atualizado!'
+            : 'Pedido entregue e estoque atualizado!'
+        )
+        setConfirmStatusOpen(false)
+        setPendingStatusChange(null)
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao atualizar status')
@@ -353,10 +444,6 @@ export function PedidosContent({
           <p className="text-muted-foreground">Gerencie os pedidos dos seus clientes</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setIsBuilderOpen(true)} variant="default">
-            <ShoppingCart className="mr-2 h-4 w-4" />
-            Montador de Item
-          </Button>
           <Dialog
             open={isAddOpen}
             onOpenChange={(open) => {
@@ -365,7 +452,7 @@ export function PedidosContent({
             }}
           >
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo Pedido
               </Button>
@@ -577,6 +664,10 @@ export function PedidosContent({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Button onClick={() => setIsBuilderOpen(true)} variant="outline" size="sm">
+          Montagem Customizada
+        </Button>
         </div>
       </div>
 
@@ -684,7 +775,14 @@ export function PedidosContent({
                         <TableCell>
                           <Select
                             value={pedido.status}
-                            onValueChange={(v) => handleStatusChange(pedido.id, v as StatusPedido)}
+                            onValueChange={(v) =>
+                              handleStatusChange(
+                                pedido.id,
+                                v as StatusPedido,
+                                pedido.cliente_nome,
+                                pedido.estoque_baixado
+                              )
+                            }
                           >
                             <SelectTrigger className="w-[140px] h-8">
                               <Badge variant="secondary" className={statusInfo.className}>
@@ -984,6 +1082,55 @@ export function PedidosContent({
         onClose={() => setIsBuilderOpen(false)}
         onSuccess={() => router.refresh()}
       />
+
+      <AlertDialog open={confirmStatusOpen} onOpenChange={setConfirmStatusOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar baixa de estoque?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Ao marcar o pedido de{' '}
+                  <strong>{pendingStatusChange?.clienteNome}</strong> como{' '}
+                  <strong>
+                    {pendingStatusChange
+                      ? getStatusInfo(pendingStatusChange.status).label
+                      : ''}
+                  </strong>
+                  , os materiais abaixo serao descontados do estoque:
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
+                  {materiaisBaixaPreview.map((mat) => (
+                    <div
+                      key={mat.material_id}
+                      className={`flex justify-between text-sm ${!mat.suficiente ? 'text-red-600' : ''}`}
+                    >
+                      <span>{mat.material_nome}</span>
+                      <span>
+                        -{mat.quantidade} {mat.unidade}
+                        {!mat.suficiente && ' (insuficiente)'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmStatusChange}
+              disabled={materiaisBaixaPreview.some((m) => !m.suficiente) || isPending}
+            >
+              {pendingStatusChange?.status === 'pronto'
+                ? 'Confirmar Pronto'
+                : 'Confirmar Entrega'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

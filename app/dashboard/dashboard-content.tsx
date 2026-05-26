@@ -15,7 +15,8 @@ import {
   ArrowDownRight,
 } from 'lucide-react'
 import type { Pedido, Material } from '@/lib/types/database'
-import { formatDistanceToNow } from 'date-fns'
+import { STATUS_PEDIDO_OPTIONS } from '@/lib/types/database'
+import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useState, useEffect } from 'react'
 
@@ -48,6 +49,7 @@ type DashboardMetrics = {
   despesasTotalMes: number
   lucroMes: number
   pedidosRecentes: Pedido[]
+  proximosEntregas: Pedido[]
   materiaisLowStock: Material[]
 }
 
@@ -59,37 +61,18 @@ function formatCurrency(value: number) {
 }
 
 function getStatusColor(status: string) {
-  switch (status) {
-    case 'em_orcamento':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'aguardando_material':
-      return 'bg-orange-100 text-orange-800'
-    case 'em_producao':
-      return 'bg-blue-100 text-blue-800'
-    case 'finalizado':
-      return 'bg-green-100 text-green-800'
-    case 'cancelado':
-      return 'bg-red-100 text-red-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
+  return (
+    STATUS_PEDIDO_OPTIONS.find((s) => s.value === status)?.className ??
+    'bg-gray-100 text-gray-800'
+  )
 }
 
 function getStatusLabel(status: string) {
-  switch (status) {
-    case 'em_orcamento':
-      return 'Em Orcamento'
-    case 'aguardando_material':
-      return 'Aguardando Material'
-    case 'em_producao':
-      return 'Em Producao'
-    case 'finalizado':
-      return 'Finalizado'
-    case 'cancelado':
-      return 'Cancelado'
-    default:
-      return status
-  }
+  return STATUS_PEDIDO_OPTIONS.find((s) => s.value === status)?.label ?? status
+}
+
+function getEstoqueAtual(material: Material) {
+  return material.quantidade_atual ?? material.quantidade ?? 0
 }
 
 export function DashboardContent({ metrics }: { metrics: DashboardMetrics }) {
@@ -235,7 +218,7 @@ export function DashboardContent({ metrics }: { metrics: DashboardMetrics }) {
       </div>
 
       {/* Recent Orders and Low Stock */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Pedidos Recentes</CardTitle>
@@ -297,9 +280,45 @@ export function DashboardContent({ metrics }: { metrics: DashboardMetrics }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="destructive">
-                        {material.quantidade_atual ?? material.quantidade} {material.unidade}
+                        {getEstoqueAtual(material)} / min {material.quantidade_minima ?? 30}{' '}
+                        {material.unidade}
                       </Badge>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Proximos Pedidos para Entrega</CardTitle>
+            <CardDescription>Proximos 7 dias</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metrics.proximosEntregas.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Nenhuma entrega prevista nos proximos 7 dias.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {metrics.proximosEntregas.map((pedido) => (
+                  <div
+                    key={pedido.id}
+                    className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
+                  >
+                    <div>
+                      <span className="font-medium text-sm">{pedido.cliente_nome}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCurrency(pedido.valor_total)}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className={getStatusColor(pedido.status)}>
+                      {pedido.prazo_entrega
+                        ? format(new Date(pedido.prazo_entrega), 'dd/MM', { locale: ptBR })
+                        : '—'}
+                    </Badge>
                   </div>
                 ))}
               </div>

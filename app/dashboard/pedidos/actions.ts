@@ -118,7 +118,7 @@ export async function createPedido(
       cliente_contato: cliente_contato || null,
       prazo_entrega: prazo_entrega || null,
       data_pedido: new Date().toISOString(),
-      status: 'em_orcamento',
+      status: 'orcamento',
       prioridade,
       valor_total,
       observacoes: observacoes || null,
@@ -152,8 +152,14 @@ export async function createPedido(
     }
 
     for (let i = 0; i < itens.length; i++) {
-      const materiais = itens[i].materiais
-      if (materiais?.length && insertedItens[i]) {
+      const item = itens[i]
+      const materiais = await resolveItemMateriais(
+        supabase,
+        item.produto_id,
+        item.quantidade,
+        item.materiais
+      )
+      if (materiais.length && insertedItens[i]) {
         const matResult = await addMateriaisAoPedidoItem(insertedItens[i].id, materiais)
         if (!matResult.success) {
           console.error('Error adding item materials:', matResult.error)
@@ -223,8 +229,14 @@ export async function updatePedido(
     }
 
     for (let i = 0; i < itens.length; i++) {
-      const materiais = itens[i].materiais
-      if (materiais?.length && insertedItens[i]) {
+      const item = itens[i]
+      const materiais = await resolveItemMateriais(
+        supabase,
+        item.produto_id,
+        item.quantidade,
+        item.materiais
+      )
+      if (materiais.length && insertedItens[i]) {
         const matResult = await addMateriaisAoPedidoItem(insertedItens[i].id, materiais)
         if (!matResult.success) {
           console.error('Error updating item materials:', matResult.error)
@@ -253,7 +265,130 @@ export async function updatePedidoStatus(id: string, status: StatusPedido) {
 
   revalidatePath('/dashboard/pedidos')
   revalidatePath('/dashboard')
+  revalidatePath('/dashboard/estoque')
   return { success: true }
+}
+
+export type MaterialBaixaPreview = {
+  material_id: string
+  material_nome: string
+  unidade: string
+  quantidade: number
+  estoque_atual: number
+  suficiente: boolean
+}
+
+async function resolveItemMateriais(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  produtoId: string,
+  quantidadeItem: number,
+  customMateriais?: PedidoItemMaterialInput[]
+): Promise<PedidoItemMaterialInput[]> {
+  if (customMateriais?.length) {
+    return customMateriais
+  }
+
+  const { data } = await supabase
+    .from('produto_materiais')
+    .select('material_id, quantidade_usada')
+    .eq('produto_id', produtoId)
+
+  return (data || []).map((pm) => ({
+    material_id: pm.material_id,
+    quantidade: pm.quantidade_usada * quantidadeItem,
+  }))
+}
+
+export async function getMateriaisBaixaPedido(
+  pedidoId: string
+): Promise<MaterialBaixaPreview[]> {
+  const supabase = await createClient()
+
+  const { data: itens, error } = await supabase
+    .from('pedido_itens')
+    .select(`
+      id,
+      quantidade,
+      produto_id,
+      pedido_itens_materiais (
+        material_id,
+        quantidade,
+        material:materiais (nome, unidade, quantidade, quantidade_atual)
+      )
+    `)
+    .eq('pedido_id', pedidoId)
+
+  if (error || !itens) {
+    console.error('Error fetching order materials:', error)
+    return []
+  }
+
+  const agregado = new Map<string, MaterialBaixaPreview>()
+
+  for (const item of itens) {
+    const customMats = item.pedido_itens_materiais as Array<{
+      material_id: string
+      quantidade: number
+      material: { nome: string; unidade: string; quantidade: number; quantidade_atual?: number }
+    }>
+
+    if (customMats?.length) {
+      for (const mat of customMats) {
+        const atual = mat.material.quantidade_atual ?? mat.material.quantidade ?? 0
+        const existing = agregado.get(mat.material_id)
+        if (existing) {
+          existing.quantidade += mat.quantidade
+          existing.suficiente = atual >= existing.quantidade
+        } else {
+          agregado.set(mat.material_id, {
+            material_id: mat.material_id,
+            material_nome: mat.material.nome,
+            unidade: mat.material.unidade,
+            quantidade: mat.quantidade,
+            estoque_atual: atual,
+            suficiente: atual >= mat.quantidade,
+          })
+        }
+      }
+      continue
+    }
+
+    const { data: composicao } = await supabase
+      .from('produto_materiais')
+      .select(`
+        material_id,
+        quantidade_usada,
+        material:materiais (nome, unidade, quantidade, quantidade_atual)
+      `)
+      .eq('produto_id', item.produto_id)
+
+    for (const pm of composicao || []) {
+      const material = pm.material as {
+        nome: string
+        unidade: string
+        quantidade: number
+        quantidade_atual?: number
+      }
+      const qtd = pm.quantidade_usada * item.quantidade
+      const atual = material.quantidade_atual ?? material.quantidade ?? 0
+      const existing = agregado.get(pm.material_id)
+      if (existing) {
+        existing.quantidade += qtd
+        existing.suficiente = atual >= existing.quantidade
+      } else {
+        agregado.set(pm.material_id, {
+          material_id: pm.material_id,
+          material_nome: material.nome,
+          unidade: material.unidade,
+          quantidade: qtd,
+          estoque_atual: atual,
+          suficiente: atual >= qtd,
+        })
+      }
+    }
+  }
+
+  return Array.from(agregado.values())
 }
 
 export async function deletePedido(id: string) {

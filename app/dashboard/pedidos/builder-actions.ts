@@ -360,7 +360,7 @@ export async function criarPedidoComMontagem(
         cliente_nome,
         cliente_contato: cliente_telefone || null,
         prazo_entrega: data_entrega || null,
-        status: 'em_orcamento',
+        status: 'orcamento',
         valor_total,
         observacoes: observacoesFinal,
         prioridade: 1,

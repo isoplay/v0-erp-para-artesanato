@@ -38,9 +38,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, MoreHorizontal, Package, Search, Pencil, Trash2, Eye } from 'lucide-react'
+import { Plus, MoreHorizontal, Package, Search, Pencil, Trash2, Eye, Copy } from 'lucide-react'
 import type { Material, ProdutoComMateriais } from '@/lib/types/database'
-import { createProduto, updateProduto, deleteProduto, toggleProdutoAtivo } from './actions'
+import { createProduto, updateProduto, deleteProduto, toggleProdutoAtivo, duplicateProduto } from './actions'
+import type { ComposicaoInput } from './actions'
+import { ComposicaoProdutoForm } from './composicao-produto-form'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Textarea } from '@/components/ui/textarea'
@@ -50,6 +52,14 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value)
+}
+
+function parsePtBrNumber(value: string) {
+  const s = String(value ?? '').trim()
+  if (!s) return 0
+  const normalized = s.replace(/\./g, '').replace(',', '.')
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : 0
 }
 
 const categorias = [
@@ -78,6 +88,14 @@ export function ProdutosContent({
   const [selectedProduto, setSelectedProduto] = useState<ProdutoComMateriais | null>(null)
   const [addTipo, setAddTipo] = useState('terco')
   const [editTipo, setEditTipo] = useState('terco')
+  const [addComposicao, setAddComposicao] = useState<ComposicaoInput[]>([])
+  const [editComposicao, setEditComposicao] = useState<ComposicaoInput[]>([])
+  const [addMaodeobra, setAddMaodeobra] = useState('5')
+  const [editMaodeobra, setEditMaodeobra] = useState('5')
+  const [addMargem, setAddMargem] = useState('60')
+  const [editMargem, setEditMargem] = useState('60')
+  const [addPreco, setAddPreco] = useState('0')
+  const [editPreco, setEditPreco] = useState('0')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
@@ -92,10 +110,14 @@ export function ProdutosContent({
     const formData = new FormData(e.currentTarget)
     formData.set('tipo', addTipo)
     startTransition(async () => {
-      const result = await createProduto(formData)
+      const result = await createProduto(formData, addComposicao)
       if (result.success) {
         toast.success('Produto cadastrado com sucesso!')
         setIsAddOpen(false)
+        setAddComposicao([])
+        setAddMaodeobra('5')
+        setAddMargem('60')
+        setAddPreco('0')
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao cadastrar produto')
@@ -109,11 +131,12 @@ export function ProdutosContent({
     const formData = new FormData(e.currentTarget)
     formData.set('tipo', editTipo)
     startTransition(async () => {
-      const result = await updateProduto(selectedProduto.id, formData)
+      const result = await updateProduto(selectedProduto.id, formData, editComposicao)
       if (result.success) {
         toast.success('Produto atualizado com sucesso!')
         setIsEditOpen(false)
         setSelectedProduto(null)
+        setEditComposicao([])
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao atualizar produto')
@@ -149,12 +172,33 @@ export function ProdutosContent({
   function openEdit(produto: ProdutoComMateriais) {
     setSelectedProduto(produto)
     setEditTipo(produto.tipo)
+    setEditMaodeobra(String(produto.valor_maodeobra ?? 0))
+    setEditMargem(String(produto.margem_lucro ?? 60))
+    setEditPreco(String(produto.preco_venda))
+    setEditComposicao(
+      produto.produto_materiais.map((pm) => ({
+        material_id: pm.material_id,
+        quantidade_usada: pm.quantidade_usada,
+      }))
+    )
     setIsEditOpen(true)
   }
 
   function openView(produto: ProdutoComMateriais) {
     setSelectedProduto(produto)
     setIsViewOpen(true)
+  }
+
+  async function handleDuplicate(id: string) {
+    startTransition(async () => {
+      const result = await duplicateProduto(id)
+      if (result.success) {
+        toast.success('Produto duplicado!')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Erro ao duplicar produto')
+      }
+    })
   }
 
   function calculateMargin(preco: number, custo: number) {
@@ -180,11 +224,11 @@ export function ProdutosContent({
               Novo Produto
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Cadastrar Produto</DialogTitle>
               <DialogDescription>
-                Crie um novo produto. Os materiais serão configurados por pedido.
+                Defina a receita padrao com materiais, custo e margem de lucro.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreateSubmit} className="space-y-4">
@@ -216,23 +260,47 @@ export function ProdutosContent({
                   <Input
                     id="preco_venda"
                     name="preco_venda"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
                     placeholder="R$ 0,00"
+                    value={addPreco}
+                    onChange={(e) => setAddPreco(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="margem_lucro">Margem de Lucro (%)</Label>
+                  <Label htmlFor="margem_lucro">Margem Desejada (%)</Label>
                   <Input
                     id="margem_lucro"
                     name="margem_lucro"
-                    type="number"
-                    step="0.01"
-                    defaultValue="30"
+                    type="text"
+                    inputMode="decimal"
+                    value={addMargem}
+                    onChange={(e) => setAddMargem(e.target.value)}
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="valor_maodeobra">Mao de Obra (R$)</Label>
+                <Input
+                  id="valor_maodeobra"
+                  name="valor_maodeobra"
+                  type="text"
+                  inputMode="decimal"
+                  min="0"
+                  value={addMaodeobra}
+                  onChange={(e) => setAddMaodeobra(e.target.value)}
+                />
+              </div>
+
+              <ComposicaoProdutoForm
+                materiais={materiais}
+                composicao={addComposicao}
+                onChange={setAddComposicao}
+                valorMaodeobra={parsePtBrNumber(addMaodeobra)}
+                margemLucro={parsePtBrNumber(addMargem)}
+                precoVenda={parsePtBrNumber(addPreco)}
+              />
 
               <DialogFooter>
                 <DialogClose asChild>
@@ -370,6 +438,10 @@ export function ProdutosContent({
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(produto.id)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                Duplicar
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDelete(produto.id)}
                                 className="text-destructive"
@@ -489,23 +561,46 @@ export function ProdutosContent({
                   <Input
                     id="edit-preco_venda"
                     name="preco_venda"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
-                    defaultValue={selectedProduto.preco_venda}
+                    value={editPreco}
+                    onChange={(e) => setEditPreco(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-margem_lucro">Margem de Lucro (%)</Label>
+                  <Label htmlFor="edit-margem_lucro">Margem Desejada (%)</Label>
                   <Input
                     id="edit-margem_lucro"
                     name="margem_lucro"
-                    type="number"
-                    step="0.01"
-                    defaultValue={selectedProduto.margem_lucro}
+                    type="text"
+                    inputMode="decimal"
+                    value={editMargem}
+                    onChange={(e) => setEditMargem(e.target.value)}
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-valor_maodeobra">Mao de Obra (R$)</Label>
+                <Input
+                  id="edit-valor_maodeobra"
+                  name="valor_maodeobra"
+                  type="text"
+                  inputMode="decimal"
+                  min="0"
+                  value={editMaodeobra}
+                  onChange={(e) => setEditMaodeobra(e.target.value)}
+                />
+              </div>
+
+              <ComposicaoProdutoForm
+                materiais={materiais}
+                composicao={editComposicao}
+                onChange={setEditComposicao}
+                valorMaodeobra={parsePtBrNumber(editMaodeobra)}
+                margemLucro={parsePtBrNumber(editMargem)}
+                precoVenda={parsePtBrNumber(editPreco)}
+              />
               <input type="hidden" name="ativo" value={selectedProduto.ativo.toString()} />
 
               <DialogFooter>

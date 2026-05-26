@@ -5,7 +5,7 @@ export type Material = {
   preco_compra: number
   quantidade: number
   quantidade_atual?: number
-  quantidade_minima?: number
+  quantidade_minima: number
   unidade: string
   custo_unitario: number
   descricao?: string | null
@@ -22,6 +22,7 @@ export type Produto = {
   tipo: 'terco' | 'pulseira' | 'chaveiro' | 'outro'
   preco_venda: number
   margem_lucro: number
+  valor_maodeobra: number
   ativo: boolean
   data_pedido: string
   updated_at: string
@@ -42,11 +43,25 @@ export type ProdutoComMateriais = Produto & {
 }
 
 export type StatusPedido =
-  | 'em_orcamento'
-  | 'aguardando_material'
+  | 'orcamento'
+  | 'confirmado'
   | 'em_producao'
-  | 'finalizado'
+  | 'pronto'
+  | 'entregue'
   | 'cancelado'
+
+export const STATUS_PEDIDO_OPTIONS: {
+  value: StatusPedido
+  label: string
+  className: string
+}[] = [
+  { value: 'orcamento', label: 'Em Orçamento', className: 'bg-yellow-100 text-yellow-800' },
+  { value: 'confirmado', label: 'Confirmado', className: 'bg-amber-100 text-amber-800' },
+  { value: 'em_producao', label: 'Em Produção', className: 'bg-blue-100 text-blue-800' },
+  { value: 'pronto', label: 'Pronto para Entrega', className: 'bg-emerald-100 text-emerald-800' },
+  { value: 'entregue', label: 'Entregue', className: 'bg-green-100 text-green-800' },
+  { value: 'cancelado', label: 'Cancelado', className: 'bg-red-100 text-red-800' },
+]
 
 export type Pedido = {
   id: string
@@ -57,6 +72,7 @@ export type Pedido = {
   prioridade: number
   observacoes: string | null
   valor_total: number
+  estoque_baixado?: boolean
   data_pedido: string
   updated_at: string
 }

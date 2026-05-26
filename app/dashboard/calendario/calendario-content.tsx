@@ -21,6 +21,7 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { PedidoCalendario } from './actions'
+import { STATUS_PEDIDO_OPTIONS } from '@/lib/types/database'
 import Link from 'next/link'
 
 function formatCurrency(value: number) {
@@ -30,21 +31,13 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-const statusStyles: Record<string, string> = {
-  em_orcamento: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  aguardando_material: 'bg-orange-100 text-orange-800 border-orange-200',
-  em_producao: 'bg-blue-100 text-blue-800 border-blue-200',
-  finalizado: 'bg-green-100 text-green-800 border-green-200',
-  cancelado: 'bg-gray-100 text-gray-800 border-gray-200',
-}
+const statusStyles = Object.fromEntries(
+  STATUS_PEDIDO_OPTIONS.map((s) => [s.value, s.className.replace('text-', 'border-').split(' ')[0] + ' ' + s.className])
+)
 
-const statusLabels: Record<string, string> = {
-  em_orcamento: 'Em Orcamento',
-  aguardando_material: 'Aguardando Material',
-  em_producao: 'Em Producao',
-  finalizado: 'Finalizado',
-  cancelado: 'Cancelado',
-}
+const statusLabels = Object.fromEntries(
+  STATUS_PEDIDO_OPTIONS.map((s) => [s.value, s.label])
+)
 
 export function CalendarioContent({ pedidos }: { pedidos: PedidoCalendario[] }) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
