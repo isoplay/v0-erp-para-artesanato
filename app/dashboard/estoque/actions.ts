@@ -80,6 +80,7 @@ export async function createMaterial(formData: FormData) {
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
+  const cor = formData.get('cor') as string
   const quantidade = parsePtBrNumber(formData.get('quantidade'))
   const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
   const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
@@ -101,6 +102,7 @@ export async function createMaterial(formData: FormData) {
     nome,
     tipo,
     unidade,
+    cor,
     quantidade,
     quantidade_atual: quantidade,
     quantidade_minima,
@@ -130,6 +132,7 @@ export async function updateMaterial(id: string, formData: FormData) {
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
+  const cor = formData.get('cor') as string
   const quantidade = parsePtBrNumber(formData.get('quantidade'))
   const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
   const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
@@ -149,6 +152,7 @@ export async function updateMaterial(id: string, formData: FormData) {
     nome,
     tipo,
     unidade,
+    cor,
     quantidade,
     quantidade_atual: quantidade,
     quantidade_minima,

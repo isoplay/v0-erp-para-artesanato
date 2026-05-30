@@ -11,6 +11,7 @@ export type Material = {
   descricao?: string | null
   fornecedor?: string | null
   imagem_url?: string | null
+  cor?: string
   created_at?: string
   data_pedido?: string
   updated_at: string
@@ -155,18 +156,18 @@ export type CategoriaProduto = {
   descricao: string | null
   ativo: boolean
   ordem: number
-  data_pedido: string
+  data_pedido?: string  // Optional - only included in some queries
   updated_at: string
 }
 
 export type VariacaoTipo = {
   id: string
-  categoria_id: string
+  categoria_id?: string  // Optional - not always included in nested queries
   nome: string
   descricao: string | null
   ativo: boolean
   ordem: number
-  data_pedido: string
+  data_pedido?: string  // Optional - only included in some queries
   updated_at: string
   // Joins
   categoria?: CategoriaProduto
@@ -174,14 +175,14 @@ export type VariacaoTipo = {
 
 export type GrupoComponente = {
   id: string
-  categoria_id: string
+  categoria_id?: string  // Optional - not always included in nested queries
   nome: string
   descricao: string | null
   obrigatorio: boolean
   permite_multipla_selecao: boolean
   ordem: number
   ativo: boolean
-  data_pedido: string
+  data_pedido?: string  // Optional - only included in some queries
   updated_at: string
   // Joins
   categoria?: CategoriaProduto

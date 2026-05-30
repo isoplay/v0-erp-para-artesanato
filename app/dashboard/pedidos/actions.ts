@@ -326,7 +326,7 @@ export async function getMateriaisBaixaPedido(
   const agregado = new Map<string, MaterialBaixaPreview>()
 
   for (const item of itens) {
-    const customMats = item.pedido_itens_materiais as Array<{
+    const customMats = (item.pedido_itens_materiais || []) as Array<{
       material_id: string
       quantidade: number
       material: { nome: string; unidade: string; quantidade: number; quantidade_atual?: number }
@@ -334,7 +334,10 @@ export async function getMateriaisBaixaPedido(
 
     if (customMats?.length) {
       for (const mat of customMats) {
-        const atual = mat.material.quantidade_atual ?? mat.material.quantidade ?? 0
+        const material = Array.isArray(mat.material) ? mat.material[0] : mat.material
+        if (!material) continue
+        
+        const atual = material.quantidade_atual ?? material.quantidade ?? 0
         const existing = agregado.get(mat.material_id)
         if (existing) {
           existing.quantidade += mat.quantidade
@@ -342,8 +345,8 @@ export async function getMateriaisBaixaPedido(
         } else {
           agregado.set(mat.material_id, {
             material_id: mat.material_id,
-            material_nome: mat.material.nome,
-            unidade: mat.material.unidade,
+            material_nome: material.nome,
+            unidade: material.unidade,
             quantidade: mat.quantidade,
             estoque_atual: atual,
             suficiente: atual >= mat.quantidade,
@@ -363,12 +366,9 @@ export async function getMateriaisBaixaPedido(
       .eq('produto_id', item.produto_id)
 
     for (const pm of composicao || []) {
-      const material = pm.material as {
-        nome: string
-        unidade: string
-        quantidade: number
-        quantidade_atual?: number
-      }
+      const material = Array.isArray(pm.material) ? pm.material[0] : pm.material
+      if (!material) continue
+      
       const qtd = pm.quantidade_usada * item.quantidade
       const atual = material.quantidade_atual ?? material.quantidade ?? 0
       const existing = agregado.get(pm.material_id)

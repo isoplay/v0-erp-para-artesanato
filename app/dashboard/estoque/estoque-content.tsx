@@ -75,6 +75,8 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [addUnidade, setAddUnidade] = useState('un')
   const [editUnidade, setEditUnidade] = useState('un')
+  const [addCor, setAddCor] = useState('#808080')
+  const [editCor, setEditCor] = useState('#808080')
   const [movTipo, setMovTipo] = useState<TipoMovimentacao>('entrada')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -87,6 +89,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     formData.set('unidade', addUnidade)
+    formData.set('cor', addCor)
     startTransition(async () => {
       const result = await createMaterial(formData)
       if (result.success) {
@@ -104,6 +107,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
     if (!selectedMaterial) return
     const formData = new FormData(e.currentTarget)
     formData.set('unidade', editUnidade)
+    formData.set('cor', editCor)
     startTransition(async () => {
       const result = await updateMaterial(selectedMaterial.id, formData)
       if (result.success) {
@@ -245,6 +249,22 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   <input type="hidden" name="unidade" value={addUnidade} />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="cor">Cor do Material</Label>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Input
+                      id="cor"
+                      name="cor"
+                      type="color"
+                      value={addCor}
+                      onChange={(e) => setAddCor(e.target.value)}
+                      className="w-16 h-10 p-1 cursor-pointer"
+                    />
+                  </div>
+                  <span className="text-sm text-muted-foreground">{addCor}</span>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="quantidade">Quantidade Inicial *</Label>
@@ -356,7 +376,14 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                     return (
                       <TableRow key={material.id}>
                         <TableCell>
-                          <span className="font-medium">{material.nome}</span>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-5 w-5 rounded-full border border-gray-300 shadow-sm"
+                              style={{ backgroundColor: material.cor || '#808080' }}
+                              title={material.cor || '#808080'}
+                            />
+                            <span className="font-medium">{material.nome}</span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-muted-foreground">{material.tipo}</span>
@@ -404,6 +431,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                                 onClick={() => {
                                   setSelectedMaterial(material)
                                   setEditUnidade(material.unidade)
+                                  setEditCor(material.cor || '#808080')
                                   setIsEditOpen(true)
                                 }}
                               >
@@ -464,6 +492,22 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   required
                   defaultValue={selectedMaterial.tipo}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-cor">Cor do Material</Label>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Input
+                      id="edit-cor"
+                      name="cor"
+                      type="color"
+                      value={editCor}
+                      onChange={(e) => setEditCor(e.target.value)}
+                      className="w-16 h-10 p-1 cursor-pointer"
+                    />
+                  </div>
+                  <span className="text-sm text-muted-foreground">{editCor}</span>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-imagem">Foto do Material</Label>

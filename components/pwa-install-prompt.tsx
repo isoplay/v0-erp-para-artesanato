@@ -25,12 +25,15 @@ export function PWAInstallPrompt() {
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
     setIsIOS(ios)
 
+    let promptTimeout: NodeJS.Timeout | undefined
+    let iosTimeout: NodeJS.Timeout | undefined
+
     // Listen for beforeinstallprompt event (Android/Chrome)
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
       // Show prompt after 30 seconds of use
-      setTimeout(() => {
+      promptTimeout = setTimeout(() => {
         setShowPrompt(true)
       }, 30000)
     }
@@ -39,13 +42,15 @@ export function PWAInstallPrompt() {
 
     // For iOS, show instructions after delay
     if (ios && !standalone) {
-      setTimeout(() => {
+      iosTimeout = setTimeout(() => {
         setShowPrompt(true)
       }, 60000)
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler)
+      if (promptTimeout) clearTimeout(promptTimeout)
+      if (iosTimeout) clearTimeout(iosTimeout)
     }
   }, [])
 
@@ -74,7 +79,7 @@ export function PWAInstallPrompt() {
   useEffect(() => {
     const dismissed = localStorage.getItem('pwa-prompt-dismissed')
     if (dismissed) {
-      const dismissedTime = parseInt(dismissed)
+      const dismissedTime = parseInt(dismissed, 10)
       const sevenDays = 7 * 24 * 60 * 60 * 1000
       if (Date.now() - dismissedTime < sevenDays) {
         setShowPrompt(false)

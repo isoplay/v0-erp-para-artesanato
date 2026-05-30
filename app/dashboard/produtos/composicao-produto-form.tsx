@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Plus, X } from 'lucide-react'
 import type { Material } from '@/lib/types/database'
-import type { ComposicaoInput } from '../actions'
+import type { ComposicaoInput } from './actions'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
