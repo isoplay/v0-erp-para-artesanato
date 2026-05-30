@@ -9,8 +9,35 @@ next.user-config.*
 
 # Environment variables
 .env*.local
+.env
+.env.*
+
+# Cursor / Copilot
+.copilot/
+
+# Obsidian
+.obsidian/
 
 # Common ignores
-node_modules
+node_modules/
 .next/
 .DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+out/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
