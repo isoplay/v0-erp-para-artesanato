@@ -61,7 +61,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           return caches.match(event.request)
             .then((cachedResponse) => {
-              return cachedResponse || caches.match('/dashboard');
+              return cachedResponse || caches.match('/', 302);
             })
             .catch(() => {
               return new Response('Offline - Navegacao indisponivel', { status: 503 });
