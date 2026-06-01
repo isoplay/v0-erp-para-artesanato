@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { Pedido } from '@/lib/types/database'
 
 export type PedidoCalendario = Pick<
@@ -9,7 +9,7 @@ export type PedidoCalendario = Pick<
 >
 
 export async function getPedidosComEntrega(): Promise<PedidoCalendario[]> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('pedidos')

@@ -47,7 +47,9 @@ function ChartContainer({
   >['children']
 }) {
   const uniqueId = React.useId()
-  const chartId = `chart-${id || uniqueId.replace(/:/g, '')}`
+  const chartId = `chart-${
+    sanitizeCssIdentifier(id || uniqueId.replace(/:/g, '')) || 'generated'
+  }`
 
   return (
     <ChartContext.Provider value={{ config }}>
@@ -82,23 +84,61 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join('\n')}
+          .map(([theme, prefix]) => {
+            const declarations = colorConfig
+              .map(([key, itemConfig]) => {
+                const color =
+                  itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+                  itemConfig.color
+                const cssKey = sanitizeCssIdentifier(key)
+                const cssColor = color?.trim()
+
+                if (!cssKey || !isSafeCssColor(cssColor)) {
+                  return null
+                }
+
+                return `  --color-${cssKey}: ${cssColor};`
+              })
+              .filter(Boolean)
+              .join('\n')
+
+            return declarations
+              ? `
+${prefix} [data-chart="${id}"] {
+${declarations}
 }
-`,
-          )
+`
+              : null
+          })
+          .filter(Boolean)
           .join('\n'),
       }}
     />
+  )
+}
+
+function sanitizeCssIdentifier(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function isSafeCssColor(value?: string) {
+  const color = value?.trim()
+
+  if (!color || color.length > 120 || /[;{}]/.test(color)) {
+    return false
+  }
+
+  return (
+    /^#[0-9a-fA-F]{3,8}$/.test(color) ||
+    /^[a-zA-Z]+$/.test(color) ||
+    /^var\(--[a-zA-Z0-9_-]+\)$/.test(color) ||
+    /^(rgb|rgba|hsl|hsla|oklch|oklab|lch|lab)\([a-zA-Z0-9\s.,%/()+-]+\)$/.test(
+      color,
+    )
   )
 }
 

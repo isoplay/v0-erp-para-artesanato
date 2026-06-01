@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { Pedido, Material, Despesa } from '@/lib/types/database'
 
 function getEstoqueAtual(material: Material) {
@@ -8,7 +8,7 @@ function getEstoqueAtual(material: Material) {
 }
 
 export async function getDashboardMetrics() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const now = new Date()
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()

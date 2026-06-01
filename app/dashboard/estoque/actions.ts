@@ -1,20 +1,57 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { parseDecimalInput } from '@/lib/number'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { Material, TipoMovimentacao } from '@/lib/types/database'
 
-function parsePtBrNumber(raw: FormDataEntryValue | null): number {
-  const s = String(raw ?? '').trim()
-  if (!s) return 0
-  // Remove milhares e converte decimal ',' -> '.'
-  const normalized = s.replace(/\./g, '').replace(',', '.')
-  const n = Number(normalized)
-  return Number.isFinite(n) ? n : 0
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
+async function getSafeImageExtension(file: File) {
+  if (file.size > MAX_IMAGE_SIZE) {
+    throw new Error('Imagem maior que 5MB')
+  }
+
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  if (isJpeg) return 'jpg'
+
+  const isPng =
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  if (isPng) return 'png'
+
+  const isWebp =
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  if (isWebp) return 'webp'
+
+  throw new Error('Use apenas imagens JPG, PNG ou WEBP')
+}
+
+function validateMaterialFields(nome: string, tipo: string, quantidade: number, custoUnitario: number) {
+  if (!nome.trim() || nome.length > 120) return 'Nome do material invalido'
+  if (!tipo.trim() || tipo.length > 60) return 'Tipo de componente invalido'
+  if (quantidade < 0 || quantidade > 1_000_000) return 'Quantidade invalida'
+  if (custoUnitario < 0 || custoUnitario > 1_000_000) return 'Custo unitario invalido'
+  return null
 }
 
 export async function getMateriais() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('materiais')
@@ -30,7 +67,7 @@ export async function getMateriais() {
 }
 
 export async function getMaterial(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('materiais')
@@ -47,10 +84,10 @@ export async function getMaterial(id: string) {
 }
 
 export async function uploadImagemMaterial(file: File): Promise<string | null> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`
+  const fileExt = await getSafeImageExtension(file)
+  const fileName = `${crypto.randomUUID()}-${Date.now()}.${fileExt}`
   const filePath = `materiais/${fileName}`
 
   try {
@@ -75,25 +112,35 @@ export async function uploadImagemMaterial(file: File): Promise<string | null> {
 }
 
 export async function createMaterial(formData: FormData) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
   const cor = formData.get('cor') as string
-  const quantidade = parsePtBrNumber(formData.get('quantidade'))
-  const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
-  const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
-  // Fallback (compat): se ainda vier preco_compra do form antigo
-  const preco_compra_input = parsePtBrNumber(formData.get('preco_compra'))
+  const quantidade = parseDecimalInput(formData.get('quantidade'))
+  const quantidade_minima = parseDecimalInput(formData.get('quantidade_minima')) || 30
+  const custo_unitario_input = parseDecimalInput(formData.get('custo_unitario'))
+  const preco_compra_input = parseDecimalInput(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
+  const validationError = validateMaterialFields(nome, tipo, quantidade, custo_unitario_input)
+
+  if (validationError) {
+    return { success: false, error: validationError }
+  }
 
   let imagem_url = null
   if (imagem && imagem.size > 0) {
-    imagem_url = await uploadImagemMaterial(imagem)
+    try {
+      imagem_url = await uploadImagemMaterial(imagem)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Imagem invalida',
+      }
+    }
   }
 
-  // Banco calcula `custo_unitario` como `preco_compra / quantidade`.
   // No formulário, o usuário digita o custo unitário em R$.
   const preco_compra =
     custo_unitario_input > 0 ? custo_unitario_input * quantidade : preco_compra_input
@@ -127,22 +174,33 @@ export async function createMaterial(formData: FormData) {
 }
 
 export async function updateMaterial(id: string, formData: FormData) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
   const unidade = formData.get('unidade') as string
   const cor = formData.get('cor') as string
-  const quantidade = parsePtBrNumber(formData.get('quantidade'))
-  const quantidade_minima = parsePtBrNumber(formData.get('quantidade_minima')) || 30
-  const custo_unitario_input = parsePtBrNumber(formData.get('custo_unitario'))
-  // Fallback (compat): se ainda vier preco_compra do form antigo
-  const preco_compra_input = parsePtBrNumber(formData.get('preco_compra'))
+  const quantidade = parseDecimalInput(formData.get('quantidade'))
+  const quantidade_minima = parseDecimalInput(formData.get('quantidade_minima')) || 30
+  const custo_unitario_input = parseDecimalInput(formData.get('custo_unitario'))
+  const preco_compra_input = parseDecimalInput(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
+  const validationError = validateMaterialFields(nome, tipo, quantidade, custo_unitario_input)
+
+  if (validationError) {
+    return { success: false, error: validationError }
+  }
 
   let imagem_url = undefined
   if (imagem && imagem.size > 0) {
-    imagem_url = await uploadImagemMaterial(imagem)
+    try {
+      imagem_url = await uploadImagemMaterial(imagem)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Imagem invalida',
+      }
+    }
   }
 
   const preco_compra =
@@ -178,7 +236,7 @@ export async function updateMaterial(id: string, formData: FormData) {
 }
 
 export async function deleteMaterial(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { error } = await supabase
     .from('materiais')
@@ -200,7 +258,7 @@ export async function registrarMovimentacao(
   quantidade: number,
   motivo?: string
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   // Get current material
   const { data: material, error: fetchError } = await supabase
@@ -255,7 +313,7 @@ export async function registrarMovimentacao(
 }
 
 export async function getMovimentacoes(materialId: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('movimentacoes_estoque')

@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { Produto, Pedido, Material } from '@/lib/types/database'
 
 export type SearchResult = {
@@ -10,7 +10,7 @@ export type SearchResult = {
 }
 
 export async function searchGlobal(query: string): Promise<SearchResult> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   const searchTerm = `%${query}%`
 
   const [produtosResult, pedidosResult, materiaisResult] = await Promise.all([

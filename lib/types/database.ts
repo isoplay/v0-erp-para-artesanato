@@ -1,7 +1,7 @@
 export type Material = {
   id: string
   nome: string
-  tipo: string
+  tipo: string | null
   preco_compra: number
   quantidade: number
   quantidade_atual?: number
@@ -46,6 +46,7 @@ export type ProdutoComMateriais = Produto & {
 export type StatusPedido =
   | 'orcamento'
   | 'confirmado'
+  | 'separando_materiais'
   | 'em_producao'
   | 'pronto'
   | 'entregue'
@@ -58,6 +59,7 @@ export const STATUS_PEDIDO_OPTIONS: {
 }[] = [
   { value: 'orcamento', label: 'Em Orçamento', className: 'bg-yellow-100 text-yellow-800' },
   { value: 'confirmado', label: 'Confirmado', className: 'bg-amber-100 text-amber-800' },
+  { value: 'separando_materiais', label: 'Separando Materiais', className: 'bg-purple-100 text-purple-800' },
   { value: 'em_producao', label: 'Em Produção', className: 'bg-blue-100 text-blue-800' },
   { value: 'pronto', label: 'Pronto para Entrega', className: 'bg-emerald-100 text-emerald-800' },
   { value: 'entregue', label: 'Entregue', className: 'bg-green-100 text-green-800' },
@@ -68,6 +70,7 @@ export type Pedido = {
   id: string
   cliente_nome: string
   cliente_contato: string | null
+  cliente_endereco?: string | null
   prazo_entrega: string | null
   status: StatusPedido
   prioridade: number
@@ -211,6 +214,15 @@ export type ConfiguracaoMaodeobra = {
   updated_at: string
   // Joins
   categoria?: CategoriaProduto
+}
+
+export type TipoComponenteConfig = {
+  nome: string
+  ativo: boolean
+  total_grupos: number
+  categorias: string[]
+  materiais_vinculados: number
+  ordem: number
 }
 
 // View types for Item Builder UI

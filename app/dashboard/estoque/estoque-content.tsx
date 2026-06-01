@@ -1,21 +1,42 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  MoreHorizontal,
+  Package,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
-  DialogClose,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -31,18 +52,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Plus, MoreHorizontal, Package, ArrowUp, ArrowDown, Search, Pencil, Trash2, Image as ImageIcon } from 'lucide-react'
-import type { Material, TipoMovimentacao } from '@/lib/types/database'
-import { createMaterial, updateMaterial, deleteMaterial, registrarMovimentacao } from './actions'
-import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 import { Textarea } from '@/components/ui/textarea'
+import { parseDecimalInput } from '@/lib/number'
+import type { Material, TipoComponenteConfig, TipoMovimentacao } from '@/lib/types/database'
+import { createMaterial, deleteMaterial, registrarMovimentacao, updateMaterial } from './actions'
 
 function getEstoqueAtual(material: Material) {
   return material.quantidade_atual ?? material.quantidade ?? 0
@@ -55,19 +68,35 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
+function normalizeKey(value: string | null | undefined) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
 const unidades = [
   { value: 'un', label: 'Unidade' },
   { value: 'g', label: 'Gramas' },
   { value: 'kg', label: 'Quilogramas' },
   { value: 'm', label: 'Metros' },
-  { value: 'cm', label: 'Centimetros' },
+  { value: 'cm', label: 'Centímetros' },
   { value: 'pct', label: 'Pacote' },
   { value: 'cx', label: 'Caixa' },
   { value: 'par', label: 'Par' },
 ]
 
-export function EstoqueContent({ materiais }: { materiais: Material[] }) {
+export function EstoqueContent({
+  materiais,
+  tiposComponentes,
+}: {
+  materiais: Material[]
+  tiposComponentes: TipoComponenteConfig[]
+}) {
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
+  const [tipoFilter, setTipoFilter] = useState('all')
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isMovOpen, setIsMovOpen] = useState(false)
@@ -75,26 +104,79 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [addUnidade, setAddUnidade] = useState('un')
   const [editUnidade, setEditUnidade] = useState('un')
+  const [addTipo, setAddTipo] = useState('')
+  const [editTipo, setEditTipo] = useState('')
   const [addCor, setAddCor] = useState('#808080')
   const [editCor, setEditCor] = useState('#808080')
   const [movTipo, setMovTipo] = useState<TipoMovimentacao>('entrada')
   const [isPending, startTransition] = useTransition()
-  const router = useRouter()
 
-  const filteredMateriais = materiais.filter(
-    (m) => m.nome.toLowerCase().includes(searchTerm.toLowerCase())
+  const tiposAtivos = useMemo(
+    () => tiposComponentes.filter((tipo) => tipo.ativo),
+    [tiposComponentes]
   )
+  const tiposValidos = useMemo(
+    () => new Set(tiposAtivos.map((tipo) => normalizeKey(tipo.nome))),
+    [tiposAtivos]
+  )
+
+  useEffect(() => {
+    if (!addTipo && tiposAtivos[0]?.nome) {
+      setAddTipo(tiposAtivos[0].nome)
+    }
+  }, [addTipo, tiposAtivos])
+
+  function materialSemTipoValido(material: Material) {
+    const key = normalizeKey(material.tipo)
+    return !key || !tiposValidos.has(key)
+  }
+
+  function tipoOptions(selected?: string | null) {
+    const options = [...tiposAtivos]
+    const selectedKey = normalizeKey(selected)
+    if (selected && selectedKey && !options.some((tipo) => normalizeKey(tipo.nome) === selectedKey)) {
+      options.push({
+        nome: selected,
+        ativo: false,
+        total_grupos: 0,
+        categorias: [],
+        materiais_vinculados: 0,
+        ordem: 999,
+      })
+    }
+    return options
+  }
+
+  const materiaisSemTipo = materiais.filter(materialSemTipoValido)
+  const filteredMateriais = materiais.filter((material) => {
+    const matchesSearch = material.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesTipo =
+      tipoFilter === 'all' ||
+      (tipoFilter === '__sem_tipo' && materialSemTipoValido(material)) ||
+      normalizeKey(material.tipo) === normalizeKey(tipoFilter)
+
+    return matchesSearch && matchesTipo
+  })
 
   function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+
+    if (!addTipo) {
+      toast.error('Cadastre e selecione um tipo de componente em Configurações')
+      return
+    }
+
     const formData = new FormData(e.currentTarget)
+    formData.set('tipo', addTipo)
     formData.set('unidade', addUnidade)
     formData.set('cor', addCor)
+
     startTransition(async () => {
       const result = await createMaterial(formData)
       if (result.success) {
         toast.success('Material cadastrado com sucesso!')
         setIsAddOpen(false)
+        setImagePreview(null)
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao cadastrar material')
@@ -105,15 +187,24 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
   function handleUpdateSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!selectedMaterial) return
+
+    if (!editTipo) {
+      toast.error('Selecione o tipo de componente do material')
+      return
+    }
+
     const formData = new FormData(e.currentTarget)
+    formData.set('tipo', editTipo)
     formData.set('unidade', editUnidade)
     formData.set('cor', editCor)
+
     startTransition(async () => {
       const result = await updateMaterial(selectedMaterial.id, formData)
       if (result.success) {
         toast.success('Material atualizado com sucesso!')
         setIsEditOpen(false)
         setSelectedMaterial(null)
+        setImagePreview(null)
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao atualizar material')
@@ -126,7 +217,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
     startTransition(async () => {
       const result = await deleteMaterial(id)
       if (result.success) {
-        toast.success('Material excluido com sucesso!')
+        toast.success('Material excluído com sucesso!')
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao excluir material')
@@ -138,19 +229,18 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
     e.preventDefault()
     if (!selectedMaterial) return
     const formData = new FormData(e.currentTarget)
-    const tipo = movTipo
-    const quantidade = parseFloat(formData.get('quantidade') as string)
+    const quantidade = parseDecimalInput(formData.get('quantidade'))
     const motivo = formData.get('motivo') as string
 
     startTransition(async () => {
-      const result = await registrarMovimentacao(selectedMaterial.id, tipo, quantidade, motivo)
+      const result = await registrarMovimentacao(selectedMaterial.id, movTipo, quantidade, motivo)
       if (result.success) {
-        toast.success('Movimentacao registrada com sucesso!')
+        toast.success('Movimentação registrada com sucesso!')
         setIsMovOpen(false)
         setSelectedMaterial(null)
         router.refresh()
       } else {
-        toast.error(result.error || 'Erro ao registrar movimentacao')
+        toast.error(result.error || 'Erro ao registrar movimentação')
       }
     })
   }
@@ -159,138 +249,169 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
     const atual = getEstoqueAtual(material)
     const minimo = material.quantidade_minima ?? 30
     if (atual <= 0) {
-      return { label: 'Sem Estoque', className: 'bg-red-100 text-red-800' }
+      return { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
     }
     if (atual <= minimo) {
-      return { label: 'Estoque Baixo', className: 'bg-amber-100 text-amber-800' }
+      return { label: 'Estoque baixo', className: 'bg-amber-100 text-amber-800' }
     }
     return { label: 'OK', className: 'bg-green-100 text-green-800' }
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => setImagePreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  function openEdit(material: Material) {
+    setSelectedMaterial(material)
+    setEditTipo(material.tipo || '')
+    setEditUnidade(material.unidade)
+    setEditCor(material.cor || '#808080')
+    setImagePreview(null)
+    setIsEditOpen(true)
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Estoque de Materiais</h1>
-          <p className="text-muted-foreground">
-            Gerencie os materiais utilizados na producao
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Estoque de Materiais
+          </h1>
+          <p className="text-muted-foreground">Gerencie os materiais utilizados na produção</p>
         </div>
-        <Dialog open={isAddOpen} onOpenChange={(open) => {
-          setIsAddOpen(open)
-          if (!open) setImagePreview(null)
-        }}>
+        <Dialog
+          open={isAddOpen}
+          onOpenChange={(open) => {
+            setIsAddOpen(open)
+            if (!open) setImagePreview(null)
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Novo Material
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Cadastrar Material</DialogTitle>
               <DialogDescription>
-                Adicione um novo material ao estoque
+                Defina o tipo de componente para o material aparecer corretamente nos pedidos.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome *</Label>
-                <Input id="nome" name="nome" required placeholder="Ex: Conta de cristal azul" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="imagem">Foto do Material</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="imagem"
-                    name="imagem"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="flex-1"
-                  />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome *</Label>
+                  <Input id="nome" name="nome" required placeholder="Ex: Conta de cristal azul" />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tipo">Tipo de componente *</Label>
+                  <Select value={addTipo} onValueChange={setAddTipo} disabled={tiposAtivos.length === 0}>
+                    <SelectTrigger id="tipo">
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tiposAtivos.map((tipo) => (
+                        <SelectItem key={tipo.nome} value={tipo.nome}>
+                          {tipo.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="tipo" value={addTipo} />
+                </div>
+              </div>
+
+              {tiposAtivos.length === 0 && (
+                <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle className="line-clamp-none">Nenhum tipo configurado</AlertTitle>
+                  <AlertDescription>
+                    <Button asChild variant="link" className="h-auto p-0 text-amber-950 underline">
+                      <Link href="/dashboard/configuracoes">Criar tipos em Configurações</Link>
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="imagem">Foto do material</Label>
+                <Input id="imagem" name="imagem" type="file" accept="image/*" onChange={handleImageChange} />
                 {imagePreview && (
-                  <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden">
-                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="relative h-36 w-full overflow-hidden rounded-md bg-muted">
+                    <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tipo">Tipo *</Label>
-                  <Input id="tipo" name="tipo" required placeholder="Ex: Cristal, Madeira..." />
-                </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="unidade">Unidade *</Label>
-                  <Select value={addUnidade} onValueChange={setAddUnidade} required>
-                    <SelectTrigger>
+                  <Select value={addUnidade} onValueChange={setAddUnidade}>
+                    <SelectTrigger id="unidade">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      {unidades.map((u) => (
-                        <SelectItem key={u.value} value={u.value}>
-                          {u.label}
+                      {unidades.map((unidade) => (
+                        <SelectItem key={unidade.value} value={unidade.value}>
+                          {unidade.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <input type="hidden" name="unidade" value={addUnidade} />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cor">Cor do Material</Label>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
+                <div className="space-y-2">
+                  <Label htmlFor="cor">Cor do material</Label>
+                  <div className="flex min-h-10 items-center gap-3">
                     <Input
                       id="cor"
                       name="cor"
                       type="color"
                       value={addCor}
-                      onChange={(e) => setAddCor(e.target.value)}
-                      className="w-16 h-10 p-1 cursor-pointer"
+                      onChange={(event) => setAddCor(event.target.value)}
+                      className="h-10 w-16 cursor-pointer p-1"
                     />
+                    <span className="text-sm text-muted-foreground">{addCor}</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">{addCor}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="quantidade">Quantidade Inicial *</Label>
+                  <Label htmlFor="quantidade">Quantidade inicial *</Label>
                   <Input
                     id="quantidade"
                     name="quantidade"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
                     defaultValue="0"
+                    placeholder="Ex: 50 ou 50,5"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="quantidade_minima">Estoque Minimo *</Label>
+                  <Label htmlFor="quantidade_minima">Estoque mínimo *</Label>
                   <Input
                     id="quantidade_minima"
                     name="quantidade_minima"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
                     defaultValue="30"
+                    placeholder="Ex: 30"
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="custo_unitario">Custo unitario (R$) *</Label>
+                <Label htmlFor="custo_unitario">Custo unitário (R$) *</Label>
                 <Input
                   id="custo_unitario"
                   name="custo_unitario"
@@ -301,13 +422,14 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   placeholder="Ex: 0,15"
                 />
               </div>
+
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
                     Cancelar
                   </Button>
                 </DialogClose>
-                <Button type="submit" disabled={isPending}>
+                <Button type="submit" disabled={isPending || tiposAtivos.length === 0}>
                   {isPending ? 'Salvando...' : 'Salvar'}
                 </Button>
               </DialogFooter>
@@ -316,22 +438,65 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
         </Dialog>
       </div>
 
-      {/* Search */}
+      {materiaisSemTipo.length > 0 && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle className="line-clamp-none">
+            Existem materiais sem tipo de componente válido
+          </AlertTitle>
+          <AlertDescription className="gap-3">
+            <p>
+              {materiaisSemTipo.length} material(is) precisam ser revisados para aparecerem
+              corretamente na criação de pedidos.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-300 bg-white/70 text-amber-950 hover:bg-white"
+                onClick={() => setTipoFilter('__sem_tipo')}
+              >
+                Ver pendentes
+              </Button>
+              <Button asChild variant="link" size="sm" className="text-amber-950 underline">
+                <Link href="/dashboard/configuracoes">Configurar tipos</Link>
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome..."
-              value={searchTerm}
-              onChange={(e: any) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={tipoFilter} onValueChange={setTipoFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filtrar por tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os tipos</SelectItem>
+                <SelectItem value="__sem_tipo">Sem tipo válido</SelectItem>
+                {tiposAtivos.map((tipo) => (
+                  <SelectItem key={tipo.nome} value={tipo.nome}>
+                    {tipo.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Materials Table */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -343,16 +508,14 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
         <CardContent>
           {filteredMateriais.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Package className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <Package className="mb-4 h-12 w-12 text-muted-foreground/50" />
               <p className="text-muted-foreground">
-                {searchTerm ? 'Nenhum material encontrado' : 'Nenhum material cadastrado ainda'}
+                {searchTerm || tipoFilter !== 'all'
+                  ? 'Nenhum material encontrado'
+                  : 'Nenhum material cadastrado ainda'}
               </p>
-              {!searchTerm && (
-                <Button
-                  variant="link"
-                  onClick={() => setIsAddOpen(true)}
-                  className="mt-2"
-                >
+              {!searchTerm && tipoFilter === 'all' && (
+                <Button variant="link" onClick={() => setIsAddOpen(true)} className="mt-2">
                   Cadastrar primeiro material
                 </Button>
               )}
@@ -363,7 +526,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Material</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead>Tipo de componente</TableHead>
                     <TableHead className="text-right">Quantidade</TableHead>
                     <TableHead className="text-right">Custo Unit.</TableHead>
                     <TableHead>Status</TableHead>
@@ -373,12 +536,13 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                 <TableBody>
                   {filteredMateriais.map((material) => {
                     const status = getStockStatus(material)
+                    const tipoInvalido = materialSemTipoValido(material)
                     return (
                       <TableRow key={material.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div
-                              className="h-5 w-5 rounded-full border border-gray-300 shadow-sm"
+                              className="h-5 w-5 shrink-0 rounded-full border border-gray-300 shadow-sm"
                               style={{ backgroundColor: material.cor || '#808080' }}
                               title={material.cor || '#808080'}
                             />
@@ -386,7 +550,13 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-muted-foreground">{material.tipo}</span>
+                          {tipoInvalido ? (
+                            <Badge variant="outline" className="border-amber-300 text-amber-700">
+                              Sem tipo válido
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{material.tipo}</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {getEstoqueAtual(material)} {material.unidade}
@@ -425,16 +595,9 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                                 }}
                               >
                                 <ArrowDown className="mr-2 h-4 w-4 text-red-600" />
-                                Saida
+                                Saída
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedMaterial(material)
-                                  setEditUnidade(material.unidade)
-                                  setEditCor(material.cor || '#808080')
-                                  setIsEditOpen(true)
-                                }}
-                              >
+                              <DropdownMenuItem onClick={() => openEdit(material)}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
@@ -458,120 +621,120 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={(open) => {
-        setIsEditOpen(open)
-        if (!open) {
-          setSelectedMaterial(null)
-          setImagePreview(null)
-        }
-      }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open)
+          if (!open) {
+            setSelectedMaterial(null)
+            setImagePreview(null)
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Editar Material</DialogTitle>
-            <DialogDescription>
-              Atualize as informacoes do material
-            </DialogDescription>
+            <DialogDescription>Atualize as informações do material</DialogDescription>
           </DialogHeader>
           {selectedMaterial && (
             <form onSubmit={handleUpdateSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-nome">Nome *</Label>
-                <Input
-                  id="edit-nome"
-                  name="nome"
-                  required
-                  defaultValue={selectedMaterial.nome}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-nome">Nome *</Label>
+                  <Input id="edit-nome" name="nome" required defaultValue={selectedMaterial.nome} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-tipo">Tipo de componente *</Label>
+                  <Select value={editTipo} onValueChange={setEditTipo}>
+                    <SelectTrigger id="edit-tipo">
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tipoOptions(selectedMaterial.tipo).map((tipo) => (
+                        <SelectItem key={tipo.nome} value={tipo.nome}>
+                          {tipo.nome}
+                          {!tipo.ativo ? ' (inativo)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="tipo" value={editTipo} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-tipo">Tipo *</Label>
-                <Input
-                  id="edit-tipo"
-                  name="tipo"
-                  required
-                  defaultValue={selectedMaterial.tipo}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-cor">Cor do Material</Label>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-unidade">Unidade *</Label>
+                  <Select value={editUnidade} onValueChange={setEditUnidade}>
+                    <SelectTrigger id="edit-unidade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unidades.map((unidade) => (
+                        <SelectItem key={unidade.value} value={unidade.value}>
+                          {unidade.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="unidade" value={editUnidade} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-cor">Cor do material</Label>
+                  <div className="flex min-h-10 items-center gap-3">
                     <Input
                       id="edit-cor"
                       name="cor"
                       type="color"
                       value={editCor}
-                      onChange={(e) => setEditCor(e.target.value)}
-                      className="w-16 h-10 p-1 cursor-pointer"
+                      onChange={(event) => setEditCor(event.target.value)}
+                      className="h-10 w-16 cursor-pointer p-1"
                     />
+                    <span className="text-sm text-muted-foreground">{editCor}</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">{editCor}</span>
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="edit-imagem">Foto do Material</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="edit-imagem"
-                    name="imagem"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="flex-1"
-                  />
-                </div>
+                <Label htmlFor="edit-imagem">Foto do material</Label>
+                <Input id="edit-imagem" name="imagem" type="file" accept="image/*" onChange={handleImageChange} />
                 {(imagePreview || selectedMaterial.imagem_url) && (
-                  <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden">
-                    <img 
-                      src={imagePreview || selectedMaterial.imagem_url || ''} 
-                      alt="Preview" 
-                      className="w-full h-full object-cover" 
+                  <div className="relative h-36 w-full overflow-hidden rounded-md bg-muted">
+                    <img
+                      src={imagePreview || selectedMaterial.imagem_url || ''}
+                      alt="Preview"
+                      className="h-full w-full object-cover"
                     />
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-unidade">Unidade *</Label>
-                <Select value={editUnidade} onValueChange={setEditUnidade}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unidades.map((u) => (
-                      <SelectItem key={u.value} value={u.value}>
-                        {u.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <input type="hidden" name="unidade" value={editUnidade} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="edit-quantidade">Quantidade</Label>
                   <Input
                     id="edit-quantidade"
                     name="quantidade"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     defaultValue={getEstoqueAtual(selectedMaterial)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-quantidade_minima">Estoque Minimo</Label>
+                  <Label htmlFor="edit-quantidade_minima">Estoque mínimo</Label>
                   <Input
                     id="edit-quantidade_minima"
                     name="quantidade_minima"
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
                     defaultValue={selectedMaterial.quantidade_minima ?? 30}
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="edit-custo_unitario">Custo unitario (R$)</Label>
+                <Label htmlFor="edit-custo_unitario">Custo unitário (R$)</Label>
                 <Input
                   id="edit-custo_unitario"
                   name="custo_unitario"
@@ -580,6 +743,7 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
                   defaultValue={selectedMaterial.custo_unitario ?? 0}
                 />
               </div>
+
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
@@ -595,29 +759,25 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
         </DialogContent>
       </Dialog>
 
-      {/* Movement Dialog */}
       <Dialog open={isMovOpen} onOpenChange={setIsMovOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Movimentar Estoque</DialogTitle>
             <DialogDescription>
-              {selectedMaterial?.nome} - Atual: {selectedMaterial ? getEstoqueAtual(selectedMaterial) : 0}{' '}
-              {selectedMaterial?.unidade}
+              {selectedMaterial?.nome} - Atual:{' '}
+              {selectedMaterial ? getEstoqueAtual(selectedMaterial) : 0} {selectedMaterial?.unidade}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleMovimentacaoSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="tipo">Tipo de Movimentacao *</Label>
-              <Select
-                value={movTipo}
-                onValueChange={(v) => setMovTipo(v as TipoMovimentacao)}
-              >
-                <SelectTrigger>
+              <Label htmlFor="tipo-movimentacao">Tipo de movimentação *</Label>
+              <Select value={movTipo} onValueChange={(value) => setMovTipo(value as TipoMovimentacao)}>
+                <SelectTrigger id="tipo-movimentacao">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="entrada">Entrada</SelectItem>
-                  <SelectItem value="saida">Saida</SelectItem>
+                  <SelectItem value="saida">Saída</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -626,20 +786,15 @@ export function EstoqueContent({ materiais }: { materiais: Material[] }) {
               <Input
                 id="quantidade"
                 name="quantidade"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 required
-                min="0"
                 placeholder="0"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="motivo">Motivo</Label>
-              <Textarea
-                id="motivo"
-                name="motivo"
-                placeholder="Ex: Compra de fornecedor, uso em producao..."
-              />
+              <Textarea id="motivo" name="motivo" placeholder="Ex: Compra de fornecedor, uso em produção..." />
             </div>
             <DialogFooter>
               <DialogClose asChild>

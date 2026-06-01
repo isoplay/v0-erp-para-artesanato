@@ -1,16 +1,168 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { parseDecimalInput } from '@/lib/number'
+import { createAuthenticatedClient } from '@/lib/auth'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Produto, Material, ProdutoComMateriais } from '@/lib/types/database'
 
-function parsePtBrNumber(raw: FormDataEntryValue | null): number {
-  const s = String(raw ?? '').trim()
-  if (!s) return 0
-  // Remove milhares e converte decimal ',' -> '.'
-  const normalized = s.replace(/\./g, '').replace(',', '.')
-  const n = Number(normalized)
-  return Number.isFinite(n) ? n : 0
+function normalizeKey(value: string | null | undefined) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function validateProdutoInput(nome: string, valorMaodeobra: number) {
+  if (!nome.trim() || nome.length > 120) return 'Nome do produto invalido'
+  if (valorMaodeobra < 0 || valorMaodeobra > 1_000_000) return 'Valor de mao de obra invalido'
+  return null
+}
+
+async function syncTiposComponentesForCategoria(
+  supabase: SupabaseClient,
+  categoriaId: string
+) {
+  const tiposPadrao = ['Contas', 'Entremeio', 'Cruz', 'Letras']
+  const { data: todosGrupos } = await supabase
+    .from('grupos_componentes')
+    .select('nome, descricao, obrigatorio, permite_multipla_selecao, ordem, ativo')
+    .eq('ativo', true)
+
+  const tiposMap = new Map<
+    string,
+    {
+      nome: string
+      descricao: string | null
+      obrigatorio: boolean
+      permite_multipla_selecao: boolean
+      ordem: number
+    }
+  >()
+
+  ;(todosGrupos || []).forEach((grupo) => {
+    const key = normalizeKey(grupo.nome)
+    if (!key || tiposMap.has(key)) return
+    tiposMap.set(key, {
+      nome: grupo.nome,
+      descricao: grupo.descricao ?? null,
+      obrigatorio: grupo.obrigatorio ?? false,
+      permite_multipla_selecao: grupo.permite_multipla_selecao ?? false,
+      ordem: grupo.ordem ?? tiposMap.size + 1,
+    })
+  })
+
+  if (tiposMap.size === 0) {
+    tiposPadrao.forEach((nome, index) => {
+      tiposMap.set(normalizeKey(nome), {
+        nome,
+        descricao: null,
+        obrigatorio: false,
+        permite_multipla_selecao: false,
+        ordem: index + 1,
+      })
+    })
+  }
+
+  const { data: gruposCategoria } = await supabase
+    .from('grupos_componentes')
+    .select('nome')
+    .eq('categoria_id', categoriaId)
+
+  const existentes = new Set((gruposCategoria || []).map((grupo) => normalizeKey(grupo.nome)))
+  const inserir = Array.from(tiposMap.values())
+    .filter((tipo) => !existentes.has(normalizeKey(tipo.nome)))
+    .map((tipo) => ({
+      categoria_id: categoriaId,
+      nome: tipo.nome,
+      descricao: tipo.descricao,
+      obrigatorio: tipo.obrigatorio,
+      permite_multipla_selecao: tipo.permite_multipla_selecao,
+      ordem: tipo.ordem,
+      ativo: true,
+    }))
+
+  if (inserir.length === 0) return { success: true }
+
+  const { error } = await supabase.from('grupos_componentes').insert(inserir)
+  if (error) {
+    console.error('Error syncing component groups for product category:', error)
+    return { success: false, error: error.message }
+  }
+
+  return { success: true }
+}
+
+async function syncProdutoComoCategoria(
+  supabase: SupabaseClient,
+  nome: string,
+  valorMaodeobra: number
+) {
+  const nomeLimpo = nome.trim()
+  if (!nomeLimpo) return { success: false, error: 'Nome do produto obrigatório' }
+
+  const { data: existente } = await supabase
+    .from('categorias_produtos')
+    .select('id')
+    .ilike('nome', nomeLimpo)
+    .limit(1)
+    .maybeSingle()
+
+  let categoriaId = existente?.id
+
+  if (categoriaId) {
+    const { error } = await supabase
+      .from('categorias_produtos')
+      .update({
+        nome: nomeLimpo,
+        descricao: `Produto ${nomeLimpo}`,
+        ativo: true,
+      })
+      .eq('id', categoriaId)
+
+    if (error) return { success: false, error: error.message }
+  } else {
+    const { data: ultima } = await supabase
+      .from('categorias_produtos')
+      .select('ordem')
+      .order('ordem', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { data: novaCategoria, error } = await supabase
+      .from('categorias_produtos')
+      .insert({
+        nome: nomeLimpo,
+        descricao: `Produto ${nomeLimpo}`,
+        ativo: true,
+        ordem: (ultima?.ordem ?? 0) + 1,
+      })
+      .select('id')
+      .single()
+
+    if (error || !novaCategoria) {
+      return { success: false, error: error?.message || 'Erro ao criar tipo de produto' }
+    }
+
+    categoriaId = novaCategoria.id
+  }
+
+  const { error: maodeobraError } = await supabase.from('configuracao_maodeobra').upsert(
+    {
+      categoria_id: categoriaId,
+      valor_maodeobra: valorMaodeobra,
+      descricao: 'Valor definido no cadastro de produtos',
+    },
+    { onConflict: 'categoria_id' }
+  )
+
+  if (maodeobraError) {
+    console.error('Error syncing labor cost:', maodeobraError)
+    return { success: false, error: maodeobraError.message }
+  }
+
+  return syncTiposComponentesForCategoria(supabase, categoriaId)
 }
 
 export type ComposicaoInput = {
@@ -35,7 +187,7 @@ export type CustoProdutoCalculado = {
 }
 
 export async function getProdutos() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('produtos')
@@ -58,7 +210,7 @@ export async function getProdutos() {
 }
 
 export async function getProduto(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('produtos')
@@ -82,7 +234,7 @@ export async function getProduto(id: string) {
 }
 
 export async function getMateriais() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('materiais')
@@ -103,7 +255,7 @@ export async function calcularCustoProduto(
   margemLucro: number,
   precoVenda?: number
 ): Promise<CustoProdutoCalculado> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   const detalhes: CustoProdutoCalculado['detalhes'] = []
   let custo_materiais = 0
 
@@ -153,7 +305,7 @@ export async function calcularCustoProduto(
 }
 
 async function saveComposicao(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseClient,
   produtoId: string,
   composicao: ComposicaoInput[]
 ) {
@@ -183,13 +335,18 @@ export async function createProduto(
   formData: FormData,
   composicao: ComposicaoInput[] = []
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
-  const preco_venda = parsePtBrNumber(formData.get('preco_venda'))
-  const margem_lucro = parsePtBrNumber(formData.get('margem_lucro')) || 30
-  const valor_maodeobra = parsePtBrNumber(formData.get('valor_maodeobra'))
+  const preco_venda = parseDecimalInput(formData.get('preco_venda'))
+  const margem_lucro = parseDecimalInput(formData.get('margem_lucro')) || 30
+  const valor_maodeobra = parseDecimalInput(formData.get('valor_maodeobra'))
+  const validationError = validateProdutoInput(nome, valor_maodeobra)
+
+  if (validationError) {
+    return { success: false, error: validationError }
+  }
 
   const { data: produto, error: produtoError } = await supabase
     .from('produtos')
@@ -219,7 +376,17 @@ export async function createProduto(
     }
   }
 
+  const syncResult = await syncProdutoComoCategoria(supabase, nome, valor_maodeobra)
+  if (!syncResult.success) {
+    return {
+      success: false,
+      error: syncResult.error || 'Produto criado, mas falhou ao sincronizar tipo de pedido',
+    }
+  }
+
   revalidatePath('/dashboard/produtos')
+  revalidatePath('/dashboard/pedidos')
+  revalidatePath('/dashboard/configuracoes')
   return { success: true }
 }
 
@@ -228,14 +395,19 @@ export async function updateProduto(
   formData: FormData,
   composicao: ComposicaoInput[] = []
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const nome = formData.get('nome') as string
   const tipo = formData.get('tipo') as string
-  const preco_venda = parsePtBrNumber(formData.get('preco_venda'))
-  const margem_lucro = parsePtBrNumber(formData.get('margem_lucro')) || 30
-  const valor_maodeobra = parsePtBrNumber(formData.get('valor_maodeobra'))
+  const preco_venda = parseDecimalInput(formData.get('preco_venda'))
+  const margem_lucro = parseDecimalInput(formData.get('margem_lucro')) || 30
+  const valor_maodeobra = parseDecimalInput(formData.get('valor_maodeobra'))
   const ativo = formData.get('ativo') === 'true'
+  const validationError = validateProdutoInput(nome, valor_maodeobra)
+
+  if (validationError) {
+    return { success: false, error: validationError }
+  }
 
   const { error: produtoError } = await supabase
     .from('produtos')
@@ -263,7 +435,17 @@ export async function updateProduto(
     }
   }
 
+  const syncResult = await syncProdutoComoCategoria(supabase, nome, valor_maodeobra)
+  if (!syncResult.success) {
+    return {
+      success: false,
+      error: syncResult.error || 'Produto atualizado, mas falhou ao sincronizar tipo de pedido',
+    }
+  }
+
   revalidatePath('/dashboard/produtos')
+  revalidatePath('/dashboard/pedidos')
+  revalidatePath('/dashboard/configuracoes')
   return { success: true }
 }
 
@@ -273,7 +455,7 @@ export async function duplicateProduto(id: string) {
     return { success: false, error: 'Produto nao encontrado' }
   }
 
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   const { data: novo, error } = await supabase
     .from('produtos')
     .insert({
@@ -306,12 +488,21 @@ export async function duplicateProduto(id: string) {
     }
   }
 
+  await syncProdutoComoCategoria(supabase, novo.nome, novo.valor_maodeobra ?? 0)
+
   revalidatePath('/dashboard/produtos')
+  revalidatePath('/dashboard/pedidos')
+  revalidatePath('/dashboard/configuracoes')
   return { success: true, produtoId: novo.id }
 }
 
 export async function deleteProduto(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
+  const { data: produto } = await supabase
+    .from('produtos')
+    .select('nome')
+    .eq('id', id)
+    .maybeSingle()
 
   const { error } = await supabase.from('produtos').delete().eq('id', id)
 
@@ -320,12 +511,21 @@ export async function deleteProduto(id: string) {
     return { success: false, error: error.message }
   }
 
+  if (produto?.nome) {
+    await supabase
+      .from('categorias_produtos')
+      .update({ ativo: false })
+      .ilike('nome', produto.nome)
+  }
+
   revalidatePath('/dashboard/produtos')
+  revalidatePath('/dashboard/pedidos')
+  revalidatePath('/dashboard/configuracoes')
   return { success: true }
 }
 
 export async function toggleProdutoAtivo(id: string, ativo: boolean) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { error } = await supabase.from('produtos').update({ ativo }).eq('id', id)
 
@@ -334,12 +534,27 @@ export async function toggleProdutoAtivo(id: string, ativo: boolean) {
     return { success: false, error: error.message }
   }
 
+  const { data: produto } = await supabase
+    .from('produtos')
+    .select('nome')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (produto?.nome) {
+    await supabase
+      .from('categorias_produtos')
+      .update({ ativo })
+      .ilike('nome', produto.nome)
+  }
+
   revalidatePath('/dashboard/produtos')
+  revalidatePath('/dashboard/pedidos')
+  revalidatePath('/dashboard/configuracoes')
   return { success: true }
 }
 
 export async function getComposicaoProduto(produtoId: string): Promise<ComposicaoInput[]> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('produto_materiais')

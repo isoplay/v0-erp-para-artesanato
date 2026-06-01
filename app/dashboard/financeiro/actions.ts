@@ -1,11 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { parseDecimalInput } from '@/lib/number'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { Despesa, CategoriaDespesa, Pedido } from '@/lib/types/database'
 
 export async function getDespesas(mes?: number, ano?: number) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   let query = supabase.from('despesas').select('*').order('data', { ascending: false })
 
@@ -26,12 +27,16 @@ export async function getDespesas(mes?: number, ano?: number) {
 }
 
 export async function createDespesa(formData: FormData) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const descricao = formData.get('descricao') as string
-  const valor = parseFloat(formData.get('valor') as string) || 0
+  const valor = parseDecimalInput(formData.get('valor'))
   const categoria = formData.get('categoria') as CategoriaDespesa
   const data = formData.get('data') as string
+
+  if (!descricao.trim() || descricao.length > 160 || valor < 0 || valor > 1_000_000) {
+    return { success: false, error: 'Dados da despesa invalidos' }
+  }
 
   const { error } = await supabase.from('despesas').insert({
     descricao,
@@ -51,12 +56,16 @@ export async function createDespesa(formData: FormData) {
 }
 
 export async function updateDespesa(id: string, formData: FormData) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const descricao = formData.get('descricao') as string
-  const valor = parseFloat(formData.get('valor') as string) || 0
+  const valor = parseDecimalInput(formData.get('valor'))
   const categoria = formData.get('categoria') as CategoriaDespesa
   const data = formData.get('data') as string
+
+  if (!descricao.trim() || descricao.length > 160 || valor < 0 || valor > 1_000_000) {
+    return { success: false, error: 'Dados da despesa invalidos' }
+  }
 
   const { error } = await supabase
     .from('despesas')
@@ -79,7 +88,7 @@ export async function updateDespesa(id: string, formData: FormData) {
 }
 
 export async function deleteDespesa(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { error } = await supabase.from('despesas').delete().eq('id', id)
 
@@ -94,7 +103,7 @@ export async function deleteDespesa(id: string) {
 }
 
 export async function getFinanceiroResumo(mes: number, ano: number) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const startDate = new Date(ano, mes, 1).toISOString()
   const endDate = new Date(ano, mes + 1, 0).toISOString()

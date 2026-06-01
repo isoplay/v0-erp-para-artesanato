@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { createAuthenticatedClient } from '@/lib/auth'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 async function resolveProdutoIdForCategoria(
@@ -60,7 +60,7 @@ import type {
  * Get all active product categories with their variations and component groups
  */
 export async function getCategorias() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('categorias_produtos')
@@ -114,7 +114,7 @@ export async function getCategorias() {
  * Returns grouped by component group
  */
 export async function getComponentesPorCategoria(categoria_id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('vw_componentes_disponiveis')
@@ -135,7 +135,7 @@ export async function getComponentesPorCategoria(categoria_id: string) {
  * Get available components for a specific component group
  */
 export async function getComponentesPorGrupo(grupo_id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('componentes_estoque')
@@ -181,7 +181,7 @@ export async function validarEstoqueComponentes(
     quantidade: number
   }>
 ): Promise<{ valid: boolean; messages: string[] }> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const messages: string[] = []
   let valid = true
@@ -233,7 +233,7 @@ export async function calcularPrecoItemMontado(
     subtotal: number
   }>
 }> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   // Get labor cost for category
   const { data: maodeobra_data, error: maodeobra_error } = await supabase
@@ -320,7 +320,7 @@ export async function criarPedidoComMontagem(
   quantidade_itens: number,
   observacoes: string | null = null
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   try {
     // Calculate final price
@@ -426,7 +426,7 @@ export async function criarPedidoComMontagem(
  * Get labor cost configuration for a category
  */
 export async function getConfiguracaoMaodeobra(categoria_id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('configuracao_maodeobra')
@@ -446,7 +446,7 @@ export async function getConfiguracaoMaodeobra(categoria_id: string) {
  * Get all labor cost configurations
  */
 export async function getTodasConfiguracoesMaodeobra() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('configuracao_maodeobra')
@@ -456,12 +456,14 @@ export async function getTodasConfiguracoesMaodeobra() {
       categoria_id,
       valor_maodeobra,
       descricao,
-      categoria:categorias_produtos (
+      categoria:categorias_produtos!inner (
         id,
-        nome
+        nome,
+        ativo
       )
     `
     )
+    .eq('categoria.ativo', true)
     .order('categoria_id')
 
   if (error) {
@@ -481,7 +483,7 @@ export async function atualizarMaodeobra(
   categoria_id: string,
   novo_valor: number
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   if (novo_valor < 0) {
     return { success: false, error: 'Valor deve ser positivo' }

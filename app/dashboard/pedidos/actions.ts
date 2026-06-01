@@ -1,11 +1,70 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { createAuthenticatedClient } from '@/lib/auth'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Pedido, PedidoComItens, Produto, StatusPedido, Material, ProdutoMaterial } from '@/lib/types/database'
 
+function normalizeKey(value: string | null | undefined) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+async function resolveProdutoIdForCategoria(
+  supabase: SupabaseClient,
+  categoriaId: string
+): Promise<string | null> {
+  const { data: categoria } = await supabase
+    .from('categorias_produtos')
+    .select('nome')
+    .eq('id', categoriaId)
+    .maybeSingle()
+
+  if (categoria?.nome) {
+    const { data: porNome } = await supabase
+      .from('produtos')
+      .select('id, nome')
+      .eq('ativo', true)
+      .ilike('nome', categoria.nome)
+      .limit(1)
+      .maybeSingle()
+
+    if (porNome?.id) return porNome.id
+  }
+
+  const nomeNorm = normalizeKey(categoria?.nome)
+  const tipoMap: Record<string, string> = {
+    terco: 'terco',
+    pulseira: 'pulseira',
+    chaveiro: 'chaveiro',
+  }
+  const tipo = tipoMap[nomeNorm] || 'outro'
+
+  const { data: porTipo } = await supabase
+    .from('produtos')
+    .select('id')
+    .eq('tipo', tipo)
+    .eq('ativo', true)
+    .limit(1)
+    .maybeSingle()
+
+  if (porTipo?.id) return porTipo.id
+
+  const { data: qualquer } = await supabase
+    .from('produtos')
+    .select('id')
+    .eq('ativo', true)
+    .limit(1)
+    .maybeSingle()
+
+  return qualquer?.id ?? null
+}
+
 export async function getPedidos() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('pedidos')
@@ -30,7 +89,7 @@ export async function getPedidos() {
 }
 
 export async function getPedido(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('pedidos')
@@ -56,7 +115,7 @@ export async function getPedido(id: string) {
 }
 
 export async function getProdutosAtivos() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('produtos')
@@ -73,7 +132,7 @@ export async function getProdutosAtivos() {
 }
 
 export async function getMateriaisDisponiveis() {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('materiais')
@@ -95,17 +154,44 @@ export type ItemInput = {
   materiais?: PedidoItemMaterialInput[]
 }
 
+const statusPermitidos: StatusPedido[] = [
+  'orcamento',
+  'confirmado',
+  'separando_materiais',
+  'em_producao',
+  'pronto',
+  'entregue',
+  'cancelado',
+]
+
+function validatePedidoBasico(clienteNome: string, prazoEntrega?: string | null) {
+  if (!clienteNome.trim() || clienteNome.length > 120) return 'Nome do cliente invalido'
+  if (prazoEntrega && Number.isNaN(Date.parse(prazoEntrega))) {
+    return 'Prazo de entrega invalido'
+  }
+  return null
+}
+
 export async function createPedido(
   formData: FormData,
   itens: ItemInput[]
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const cliente_nome = formData.get('cliente_nome') as string
   const cliente_contato = formData.get('cliente_contato') as string
   const prazo_entrega = formData.get('prazo_entrega') as string
   const prioridade = parseInt(formData.get('prioridade') as string) || 1
   const observacoes = formData.get('observacoes') as string
+  const validationError = validatePedidoBasico(cliente_nome, prazo_entrega)
+
+  if (validationError) {
+    return { success: false, error: validationError }
+  }
+
+  if (itens.some((item) => item.quantidade <= 0 || item.quantidade > 10000 || item.valor_unitario < 0)) {
+    return { success: false, error: 'Itens do pedido invalidos' }
+  }
 
   // Calculate total
   const valor_total = itens.reduce((acc, item) => acc + item.valor_unitario * item.quantidade, 0)
@@ -178,7 +264,7 @@ export async function updatePedido(
   formData: FormData,
   itens: ItemInput[]
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const cliente_nome = formData.get('cliente_nome') as string
   const cliente_contato = formData.get('cliente_contato') as string
@@ -251,7 +337,11 @@ export async function updatePedido(
 }
 
 export async function updatePedidoStatus(id: string, status: StatusPedido) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
+
+  if (!statusPermitidos.includes(status)) {
+    return { success: false, error: 'Status invalido' }
+  }
 
   const { error } = await supabase
     .from('pedidos')
@@ -279,7 +369,7 @@ export type MaterialBaixaPreview = {
 }
 
 async function resolveItemMateriais(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseClient,
   produtoId: string,
   quantidadeItem: number,
   customMateriais?: PedidoItemMaterialInput[]
@@ -302,7 +392,7 @@ async function resolveItemMateriais(
 export async function getMateriaisBaixaPedido(
   pedidoId: string
 ): Promise<MaterialBaixaPreview[]> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data: itens, error } = await supabase
     .from('pedido_itens')
@@ -326,10 +416,12 @@ export async function getMateriaisBaixaPedido(
   const agregado = new Map<string, MaterialBaixaPreview>()
 
   for (const item of itens) {
-    const customMats = (item.pedido_itens_materiais || []) as Array<{
+    const customMats = (item.pedido_itens_materiais || []) as unknown as Array<{
       material_id: string
       quantidade: number
-      material: { nome: string; unidade: string; quantidade: number; quantidade_atual?: number }
+      material:
+        | { nome: string; unidade: string; quantidade: number; quantidade_atual?: number }
+        | { nome: string; unidade: string; quantidade: number; quantidade_atual?: number }[]
     }>
 
     if (customMats?.length) {
@@ -392,7 +484,7 @@ export async function getMateriaisBaixaPedido(
 }
 
 export async function deletePedido(id: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   // First delete items
   await supabase.from('pedido_itens').delete().eq('pedido_id', id)
@@ -443,7 +535,7 @@ export type VerificacaoProducao = {
 export async function verificarMateriaisProducao(
   itens: { produto_id: string; quantidade: number }[]
 ): Promise<VerificacaoProducao[]> {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   // Get all product compositions with materials
   const { data: produtos, error: produtosError } = await supabase
@@ -535,7 +627,7 @@ export async function verificarMateriaisProducao(
 export async function searchClientes(query: string): Promise<ClienteHistorico[]> {
   if (!query || query.length < 2) return []
   
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
   
   const { data, error } = await supabase
     .from('pedidos')
@@ -581,7 +673,7 @@ export async function addMateriaisAoPedidoItem(
   pedidoItemId: string,
   materiais: PedidoItemMaterialInput[]
 ) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   // Remove existing materials first
   await supabase
@@ -614,7 +706,7 @@ export async function addMateriaisAoPedidoItem(
 }
 
 export async function getPedidoItemMateriais(pedidoItemId: string) {
-  const supabase = await createClient()
+  const supabase = await createAuthenticatedClient()
 
   const { data, error } = await supabase
     .from('pedido_itens_materiais')
@@ -627,4 +719,236 @@ export async function getPedidoItemMateriais(pedidoItemId: string) {
   }
 
   return data
+}
+
+// Nova função para criar pedido com componentes customizados
+export async function createPedidoCustomizado(params: {
+  cliente_nome: string
+  cliente_telefone: string | null
+  cliente_endereco: string | null
+  categoria_id: string
+  quantidade_itens: number
+  componentes: Array<{ material_id: string; quantidade: number }>
+  prazo_entrega: string
+  observacoes: string | null
+}) {
+  const supabase = await createAuthenticatedClient()
+
+  try {
+    const quantidadeItens = Math.max(1, params.quantidade_itens || 1)
+    const validationError = validatePedidoBasico(params.cliente_nome, params.prazo_entrega)
+
+    if (validationError) {
+      return { success: false, error: validationError }
+    }
+
+    if (quantidadeItens > 10000) {
+      return { success: false, error: 'Quantidade de itens invalida' }
+    }
+
+    const componentesSelecionados = params.componentes.filter(
+      (componente) =>
+        componente.material_id &&
+        Number.isFinite(componente.quantidade) &&
+        componente.quantidade > 0 &&
+        componente.quantidade <= 100000
+    )
+
+    if (componentesSelecionados.length === 0) {
+      return { success: false, error: 'Adicione pelo menos um componente ao pedido' }
+    }
+
+    // Get labor configuration
+    const { data: maodeobra } = await supabase
+      .from('configuracao_maodeobra')
+      .select('valor_maodeobra')
+      .eq('categoria_id', params.categoria_id)
+      .maybeSingle()
+
+    const valorMaodeobra = (maodeobra?.valor_maodeobra || 0) * quantidadeItens
+    const materialIds = componentesSelecionados.map((componente) => componente.material_id)
+
+    const { data: materiaisData, error: materiaisError } = await supabase
+      .from('materiais')
+      .select('id, nome, custo_unitario, quantidade, quantidade_atual')
+      .in('id', materialIds)
+
+    if (materiaisError || !materiaisData) {
+      console.error('Error fetching selected materials:', materiaisError)
+      return { success: false, error: 'Erro ao carregar materiais selecionados' }
+    }
+
+    const { data: componentesData } = await supabase
+      .from('componentes_estoque')
+      .select('material_id, margem_lucro')
+      .in('material_id', materialIds)
+
+    let valorTotal = valorMaodeobra
+    const faltantes: string[] = []
+
+    for (const componente of componentesSelecionados) {
+      const material = materiaisData.find((item) => item.id === componente.material_id)
+      if (!material) {
+        faltantes.push('Material não encontrado')
+        continue
+      }
+
+      const quantidadeTotal = componente.quantidade * quantidadeItens
+      const estoqueAtual = material.quantidade_atual ?? material.quantidade ?? 0
+
+      if (estoqueAtual < quantidadeTotal) {
+        faltantes.push(
+          `${material.nome}: estoque ${estoqueAtual}, necessário ${quantidadeTotal}`
+        )
+      }
+
+      const componenteInfo = componentesData?.find(
+        (item) => item.material_id === componente.material_id
+      )
+      const margem = componenteInfo?.margem_lucro ?? 30
+      const precoUnit = (material.custo_unitario || 0) * (1 + margem / 100)
+      valorTotal += precoUnit * quantidadeTotal
+    }
+
+    if (faltantes.length > 0) {
+      return {
+        success: false,
+        error: `Estoque insuficiente: ${faltantes.join(', ')}`,
+      }
+    }
+
+    const produtoId = await resolveProdutoIdForCategoria(supabase, params.categoria_id)
+    if (!produtoId) {
+      return {
+        success: false,
+        error: 'Cadastre um produto antes de criar pedidos.',
+      }
+    }
+
+    // Create pedido
+    const { data: pedido, error: pedidoError } = await supabase
+      .from('pedidos')
+      .insert({
+        cliente_nome: params.cliente_nome,
+        cliente_contato: params.cliente_telefone,
+        prazo_entrega: params.prazo_entrega,
+        status: 'separando_materiais',
+        prioridade: 1,
+        valor_total: valorTotal,
+        observacoes: params.observacoes,
+        tipo_produto_id: params.categoria_id,
+      })
+      .select()
+      .single()
+
+    if (pedidoError || !pedido) {
+      console.error('Error creating order:', pedidoError)
+      return { success: false, error: pedidoError?.message || 'Erro ao criar pedido' }
+    }
+
+    // Create pedido item
+    const { data: pedidoItem, error: itemError } = await supabase
+      .from('pedido_itens')
+      .insert({
+        pedido_id: pedido.id,
+        produto_id: produtoId,
+        quantidade: quantidadeItens,
+        valor_unitario: valorTotal / quantidadeItens,
+      })
+      .select()
+      .single()
+
+    if (itemError || !pedidoItem) {
+      console.error('Error creating order item:', itemError)
+      await supabase.from('pedidos').delete().eq('id', pedido.id)
+      return { success: false, error: 'Erro ao adicionar item' }
+    }
+
+    // Add materials to pedido item
+    const materiais = componentesSelecionados.map((c) => ({
+      pedido_item_id: pedidoItem.id,
+      material_id: c.material_id,
+      quantidade: c.quantidade * quantidadeItens,
+    }))
+
+    const { error: matError } = await supabase
+      .from('pedido_itens_materiais')
+      .insert(materiais)
+
+    if (matError) {
+      console.error('Error adding materials:', matError)
+      await supabase.from('pedido_itens').delete().eq('id', pedidoItem.id)
+      await supabase.from('pedidos').delete().eq('id', pedido.id)
+      return { success: false, error: 'Erro ao adicionar materiais' }
+    }
+
+    revalidatePath('/dashboard/pedidos')
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/estoque')
+    return { success: true, pedidoId: pedido.id }
+  } catch (error) {
+    console.error('Error creating customized order:', error)
+    return { success: false, error: 'Erro ao criar pedido customizado' }
+  }
+}
+
+// Função para trazer dados necessários para o form de pedido
+export async function getCategoriasComComponentes() {
+  const supabase = await createAuthenticatedClient()
+
+  try {
+    // Get all categories
+    const { data: categorias, error: catError } = await supabase
+      .from('categorias_produtos')
+      .select('*')
+      .eq('ativo', true)
+      .order('ordem')
+
+    if (catError || !categorias) {
+      console.error('Error fetching categories:', catError)
+      return { categorias: [], grupos: [], componentes: [], maodeobra: {} }
+    }
+
+    // Get all component groups
+    const { data: grupos, error: grupoError } = await supabase
+      .from('grupos_componentes')
+      .select('*')
+      .eq('ativo', true)
+      .order('ordem')
+
+    if (grupoError) {
+      console.error('Error fetching groups:', grupoError)
+    }
+
+    // Get all components with materials
+    const { data: componentes, error: compError } = await supabase
+      .from('componentes_estoque')
+      .select('*, material:materiais(*)')
+      .eq('ativo', true)
+      .order('ordem')
+
+    if (compError) {
+      console.error('Error fetching components:', compError)
+    }
+
+    // Get labor costs
+    const { data: maodeobras } = await supabase
+      .from('configuracao_maodeobra')
+      .select('categoria_id, valor_maodeobra')
+
+    const maodeobra: { [key: string]: number } = {}
+    ;(maodeobras || []).forEach((m) => {
+      maodeobra[m.categoria_id] = m.valor_maodeobra
+    })
+
+    return {
+      categorias: categorias || [],
+      grupos: grupos || [],
+      componentes: componentes || [],
+      maodeobra,
+    }
+  } catch (error) {
+    console.error('Error fetching form data:', error)
+    return { categorias: [], grupos: [], componentes: [], maodeobra: {} }
+  }
 }

@@ -13,15 +13,22 @@ next.user-config.*
 .env.*
 
 # Cursor / Copilot
+.cursor/
 .copilot/
 
 # Obsidian
 .obsidian/
+*.canvas
 
 # Common ignores
 node_modules/
 .next/
 .DS_Store
+
+# Test and coverage outputs
+coverage/
+playwright-report/
+test-results/
 
 # Logs
 *.log

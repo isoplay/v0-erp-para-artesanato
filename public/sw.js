@@ -1,6 +1,5 @@
 const CACHE_NAME = 'exclusiv-art-v1';
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json'
 ];
 
@@ -40,6 +39,8 @@ self.addEventListener('fetch', (event) => {
   
   // Skip API requests, Supabase calls, and external resources
   if (url.pathname.startsWith('/api') || 
+      url.pathname.startsWith('/dashboard') ||
+      url.pathname.startsWith('/login') ||
       url.hostname.includes('supabase') ||
       url.hostname.includes('googleapis') ||
       url.hostname.includes('gstatic')) {

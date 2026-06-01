@@ -4,6 +4,8 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt'
 import { GlobalSearch } from '@/components/global-search'
 import { FloatingActionButton } from '@/components/floating-action-button'
+import { Button } from '@/components/ui/button'
+import { logout } from '@/app/login/actions'
 
 export default function DashboardLayout({
   children,
@@ -28,6 +30,11 @@ export default function DashboardLayout({
           <div className="flex-1 flex justify-center md:justify-start md:ml-4">
             <GlobalSearch />
           </div>
+          <form action={logout}>
+            <Button type="submit" variant="outline" size="sm">
+              Sair
+            </Button>
+          </form>
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6 bg-background min-h-[calc(100vh-3.5rem)]">
           {children}
