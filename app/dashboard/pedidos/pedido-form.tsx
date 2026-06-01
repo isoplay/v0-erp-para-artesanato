@@ -155,7 +155,7 @@ export function PedidoForm({
     const componenteVinculado = componentesGrupo.find(
       (componente) => componente.material_id === material.id
     )
-    const margem = componenteVinculado?.margem_lucro ?? 30
+    const margem = componenteVinculado?.margem_lucro ?? 0
     const custoUnit = material.custo_unitario || 0
     const precoUnit = custoUnit * (1 + margem / 100)
 

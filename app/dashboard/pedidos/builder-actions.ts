@@ -280,7 +280,7 @@ export async function calcularPrecoItemMontado(
 
     const material = data.material as any
     const custo = material?.custo_unitario || 0
-    const margem = data.margem_lucro || 30
+    const margem = data.margem_lucro || 0
     const valor_unitario = custo * (1 + margem / 100)
     const subtotal = valor_unitario * componente.quantidade
 

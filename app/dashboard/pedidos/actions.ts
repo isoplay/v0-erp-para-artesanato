@@ -805,7 +805,7 @@ export async function createPedidoCustomizado(params: {
       const componenteInfo = componentesData?.find(
         (item) => item.material_id === componente.material_id
       )
-      const margem = componenteInfo?.margem_lucro ?? 30
+      const margem = componenteInfo?.margem_lucro ?? 0
       const precoUnit = (material.custo_unitario || 0) * (1 + margem / 100)
       valorTotal += precoUnit * quantidadeTotal
     }
