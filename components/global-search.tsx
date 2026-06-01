@@ -1,7 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  Boxes,
+  Package,
+  Search,
+  User,
+} from 'lucide-react'
+
+import { searchGlobal, type SearchResult } from '@/app/dashboard/search-actions'
+import { Button } from '@/components/ui/button'
 import {
   CommandDialog,
   CommandEmpty,
@@ -10,15 +19,6 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Button } from '@/components/ui/button'
-import {
-  Search,
-  Package,
-  ShoppingCart,
-  Boxes,
-  User,
-} from 'lucide-react'
-import { searchGlobal, type SearchResult } from '@/app/dashboard/search-actions'
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false)
@@ -31,25 +31,30 @@ export function GlobalSearch() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  // Keyboard shortcut to open search
   useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setOpen((open) => !open)
+    router.prefetch('/dashboard/produtos')
+    router.prefetch('/dashboard/pedidos')
+    router.prefetch('/dashboard/estoque')
+  }, [router])
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        setOpen((current) => !current)
       }
     }
+
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
   }, [])
 
-  // Debounced search
   const performSearch = useCallback(async (searchQuery: string) => {
     if (searchQuery.length < 2) {
       setResults({ produtos: [], pedidos: [], materiais: [] })
       return
     }
-    
+
     setIsLoading(true)
     try {
       const data = await searchGlobal(searchQuery)
@@ -64,13 +69,15 @@ export function GlobalSearch() {
   useEffect(() => {
     const timer = setTimeout(() => {
       performSearch(query)
-    }, 300)
+    }, 250)
+
     return () => clearTimeout(timer)
   }, [query, performSearch])
 
-  function handleSelect(type: string, id?: string) {
+  function handleSelect(type: 'produto' | 'pedido' | 'material') {
     setOpen(false)
     setQuery('')
+
     switch (type) {
       case 'produto':
         router.push('/dashboard/produtos')
@@ -89,15 +96,18 @@ export function GlobalSearch() {
   return (
     <>
       <Button
+        type="button"
         variant="outline"
-        className="relative h-9 w-full justify-start text-sm text-muted-foreground sm:pr-12 md:w-40 lg:w-64"
+        className="relative h-11 w-full max-w-[580px] justify-start rounded-full border-[#e6ddef] bg-white px-4 text-sm text-[#706b82] shadow-[0_8px_26px_rgba(83,48,122,0.06)] hover:bg-white sm:pr-16 lg:w-[580px]"
         onClick={() => setOpen(true)}
       >
         <Search className="mr-2 h-4 w-4" />
-        <span className="hidden lg:inline-flex">Buscar...</span>
-        <span className="inline-flex lg:hidden">Buscar</span>
-        <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-6 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
-          <span className="text-xs">⌘</span>K
+        <span className="hidden truncate sm:inline-flex">
+          Buscar pedidos, materiais, clientes...
+        </span>
+        <span className="inline-flex sm:hidden">Buscar</span>
+        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden h-6 -translate-y-1/2 select-none items-center rounded-full border border-[#e6ddef] bg-[#fbf8ff] px-2 font-mono text-[10px] font-medium text-[#9c6ed0] sm:flex">
+          ⌘K
         </kbd>
       </Button>
 
@@ -125,7 +135,7 @@ export function GlobalSearch() {
                   {results.produtos.map((produto) => (
                     <CommandItem
                       key={produto.id}
-                      onSelect={() => handleSelect('produto', produto.id)}
+                      onSelect={() => handleSelect('produto')}
                       className="cursor-pointer"
                     >
                       <Package className="mr-2 h-4 w-4" />
@@ -145,7 +155,7 @@ export function GlobalSearch() {
                   {results.pedidos.map((pedido) => (
                     <CommandItem
                       key={pedido.id}
-                      onSelect={() => handleSelect('pedido', pedido.id)}
+                      onSelect={() => handleSelect('pedido')}
                       className="cursor-pointer"
                     >
                       <User className="mr-2 h-4 w-4" />
@@ -165,7 +175,7 @@ export function GlobalSearch() {
                   {results.materiais.map((material) => (
                     <CommandItem
                       key={material.id}
-                      onSelect={() => handleSelect('material', material.id)}
+                      onSelect={() => handleSelect('material')}
                       className="cursor-pointer"
                     >
                       <Boxes className="mr-2 h-4 w-4" />

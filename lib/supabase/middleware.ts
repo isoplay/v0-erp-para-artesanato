@@ -1,6 +1,47 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+function isInvalidRefreshTokenError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const authError = error as { code?: string; message?: string }
+  const code = authError.code?.toLowerCase() ?? ''
+  const message = authError.message?.toLowerCase() ?? ''
+
+  return (
+    code === 'refresh_token_not_found' ||
+    code === 'invalid_grant' ||
+    message.includes('invalid refresh token') ||
+    message.includes('refresh token not found')
+  )
+}
+
+function clearSupabaseCookies(request: NextRequest, response: NextResponse) {
+  request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith('sb-'))
+    .forEach((cookie) => {
+      request.cookies.delete(cookie.name)
+      response.cookies.delete(cookie.name)
+    })
+}
+
+function redirectToLogin(request: NextRequest, response: NextResponse) {
+  const url = request.nextUrl.clone()
+  url.pathname = '/login'
+  url.searchParams.set('next', request.nextUrl.pathname)
+
+  const redirectResponse = NextResponse.redirect(url)
+  response.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie)
+  })
+
+  clearSupabaseCookies(request, redirectResponse)
+  return redirectResponse
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -55,13 +96,21 @@ export async function updateSession(request: NextRequest) {
   // with the Supabase client, your users may be randomly logged out.
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
 
+  if (isInvalidRefreshTokenError(error)) {
+    clearSupabaseCookies(request, supabaseResponse)
+
+    if (isDashboard) {
+      return redirectToLogin(request, supabaseResponse)
+    }
+
+    return supabaseResponse
+  }
+
   if (isDashboard && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('next', request.nextUrl.pathname)
-    return NextResponse.redirect(url)
+    return redirectToLogin(request, supabaseResponse)
   }
 
   if (isLogin && user) {

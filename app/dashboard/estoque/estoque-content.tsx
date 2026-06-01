@@ -53,6 +53,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { MaterialAvatar } from '@/components/material-avatar'
 import { parseDecimalInput } from '@/lib/number'
 import type { Material, TipoComponenteConfig, TipoMovimentacao } from '@/lib/types/database'
 import { createMaterial, deleteMaterial, registrarMovimentacao, updateMaterial } from './actions'
@@ -74,6 +75,22 @@ function normalizeKey(value: string | null | undefined) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+function getPreviewImageUrl(value?: string | null) {
+  const url = String(value ?? '').trim()
+  if (!url || /\.svg(?:$|[?#])/i.test(url)) return null
+
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    return url
+  }
+
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
 }
 
 const unidades = [
@@ -101,7 +118,10 @@ export function EstoqueContent({
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isMovOpen, setIsMovOpen] = useState(false)
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [addImagemUrl, setAddImagemUrl] = useState('')
+  const [editImagemUrl, setEditImagemUrl] = useState('')
   const [addUnidade, setAddUnidade] = useState('un')
   const [editUnidade, setEditUnidade] = useState('un')
   const [addTipo, setAddTipo] = useState('')
@@ -177,6 +197,7 @@ export function EstoqueContent({
         toast.success('Material cadastrado com sucesso!')
         setIsAddOpen(false)
         setImagePreview(null)
+        setAddImagemUrl('')
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao cadastrar material')
@@ -205,6 +226,7 @@ export function EstoqueContent({
         setIsEditOpen(false)
         setSelectedMaterial(null)
         setImagePreview(null)
+        setEditImagemUrl('')
         router.refresh()
       } else {
         toast.error(result.error || 'Erro ao atualizar material')
@@ -271,6 +293,7 @@ export function EstoqueContent({
     setEditTipo(material.tipo || '')
     setEditUnidade(material.unidade)
     setEditCor(material.cor || '#808080')
+    setEditImagemUrl(material.imagem_url || '')
     setImagePreview(null)
     setIsEditOpen(true)
   }
@@ -288,7 +311,10 @@ export function EstoqueContent({
           open={isAddOpen}
           onOpenChange={(open) => {
             setIsAddOpen(open)
-            if (!open) setImagePreview(null)
+            if (!open) {
+              setImagePreview(null)
+              setAddImagemUrl('')
+            }
           }}
         >
           <DialogTrigger asChild>
@@ -343,9 +369,38 @@ export function EstoqueContent({
               <div className="space-y-2">
                 <Label htmlFor="imagem">Foto do material</Label>
                 <Input id="imagem" name="imagem" type="file" accept="image/*" onChange={handleImageChange} />
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Use arquivo JPG, PNG ou WEBP.
+                </p>
                 {imagePreview && (
                   <div className="relative h-36 w-full overflow-hidden rounded-md bg-muted">
                     <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="imagem_url">Imagem por URL</Label>
+                <Input
+                  id="imagem_url"
+                  name="imagem_url"
+                  type="url"
+                  inputMode="url"
+                  value={addImagemUrl}
+                  onChange={(event) => setAddImagemUrl(event.target.value)}
+                  placeholder="https://exemplo.com/material.png"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Se enviar arquivo e preencher URL, o arquivo enviado tem prioridade.
+                </p>
+                {!imagePreview && getPreviewImageUrl(addImagemUrl) && (
+                  <div className="relative h-36 w-full overflow-hidden rounded-md border bg-muted">
+                    <img
+                      src={getPreviewImageUrl(addImagemUrl) || ''}
+                      alt="Preview da imagem por URL"
+                      className="h-full w-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                 )}
               </div>
@@ -537,15 +592,32 @@ export function EstoqueContent({
                   {filteredMateriais.map((material) => {
                     const status = getStockStatus(material)
                     const tipoInvalido = materialSemTipoValido(material)
+                    const materialImageUrl = getPreviewImageUrl(material.imagem_url)
                     return (
                       <TableRow key={material.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div
-                              className="h-5 w-5 shrink-0 rounded-full border border-gray-300 shadow-sm"
-                              style={{ backgroundColor: material.cor || '#808080' }}
-                              title={material.cor || '#808080'}
-                            />
+                            {materialImageUrl ? (
+                              <button
+                                type="button"
+                                className="rounded-md text-left outline-none ring-offset-background transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                onClick={() => setPreviewMaterial(material)}
+                                title={`Ver foto de ${material.nome}`}
+                              >
+                                <MaterialAvatar
+                                  imageUrl={materialImageUrl}
+                                  color={material.cor}
+                                  tipo={material.tipo}
+                                  nome={material.nome}
+                                />
+                              </button>
+                            ) : (
+                              <MaterialAvatar
+                                color={material.cor}
+                                tipo={material.tipo}
+                                nome={material.nome}
+                              />
+                            )}
                             <span className="font-medium">{material.nome}</span>
                           </div>
                         </TableCell>
@@ -628,6 +700,7 @@ export function EstoqueContent({
           if (!open) {
             setSelectedMaterial(null)
             setImagePreview(null)
+            setEditImagemUrl('')
           }
         }}
       >
@@ -698,15 +771,35 @@ export function EstoqueContent({
               <div className="space-y-2">
                 <Label htmlFor="edit-imagem">Foto do material</Label>
                 <Input id="edit-imagem" name="imagem" type="file" accept="image/*" onChange={handleImageChange} />
-                {(imagePreview || selectedMaterial.imagem_url) && (
-                  <div className="relative h-36 w-full overflow-hidden rounded-md bg-muted">
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Use arquivo JPG, PNG ou WEBP.
+                </p>
+                {(imagePreview || getPreviewImageUrl(editImagemUrl)) && (
+                  <div className="relative h-36 w-full overflow-hidden rounded-md border bg-muted">
                     <img
-                      src={imagePreview || selectedMaterial.imagem_url || ''}
+                      src={imagePreview || getPreviewImageUrl(editImagemUrl) || ''}
                       alt="Preview"
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
+                      referrerPolicy="no-referrer"
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-imagem_url">Imagem por URL</Label>
+                <Input
+                  id="edit-imagem_url"
+                  name="imagem_url"
+                  type="url"
+                  inputMode="url"
+                  value={editImagemUrl}
+                  onChange={(event) => setEditImagemUrl(event.target.value)}
+                  placeholder="https://exemplo.com/material.png"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Limpe o campo para remover a imagem atual.
+                </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -755,6 +848,32 @@ export function EstoqueContent({
                 </Button>
               </DialogFooter>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(previewMaterial)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewMaterial(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{previewMaterial?.nome || 'Foto do material'}</DialogTitle>
+            {previewMaterial?.tipo && (
+              <DialogDescription>{previewMaterial.tipo}</DialogDescription>
+            )}
+          </DialogHeader>
+          {getPreviewImageUrl(previewMaterial?.imagem_url) && (
+            <div className="flex max-h-[70svh] items-center justify-center overflow-hidden rounded-lg border bg-muted">
+              <img
+                src={getPreviewImageUrl(previewMaterial?.imagem_url) || ''}
+                alt={previewMaterial?.nome ? `Imagem de ${previewMaterial.nome}` : 'Imagem do material'}
+                className="max-h-[70svh] w-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

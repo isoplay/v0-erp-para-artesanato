@@ -6,6 +6,7 @@ import { GlobalSearch } from '@/components/global-search'
 import { FloatingActionButton } from '@/components/floating-action-button'
 import { Button } from '@/components/ui/button'
 import { logout } from '@/app/login/actions'
+import { LogOut } from 'lucide-react'
 
 export default function DashboardLayout({
   children,
@@ -16,27 +17,37 @@ export default function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-card px-4 shadow-sm">
-          <SidebarTrigger className="-ml-1 text-foreground" />
-          <div className="h-8 w-8 relative md:hidden">
+        <header className="sticky top-0 z-10 flex h-[68px] shrink-0 items-center gap-4 border-b border-[#eee6f5] bg-[#fffcff] px-4 md:px-8">
+          <SidebarTrigger className="-ml-1 h-10 w-10 rounded-full text-[#5f5072] hover:bg-[#f3edf8] md:hidden" />
+          <div className="relative h-9 w-9 md:hidden">
             <Image
-              src="/logo.jpg"
+              src="/exclusiv-art-logo.png"
               alt="ExclusivArt"
               fill
-              className="rounded-full object-cover"
+              className="object-contain"
             />
           </div>
-          <span className="font-semibold text-foreground md:hidden">ExclusivArt</span>
-          <div className="flex-1 flex justify-center md:justify-start md:ml-4">
+          <div className="flex flex-1 items-center gap-4">
             <GlobalSearch />
+            <div className="ml-auto hidden h-10 items-center gap-2 rounded-full bg-[#fbf8ff] px-4 text-sm text-[#706b82] lg:flex">
+              <span>Olá,</span>
+              <strong className="font-semibold text-[#15142a]">Exclusiv Art</strong>
+              <span aria-hidden="true">👋</span>
+            </div>
+            <form action={logout}>
+              <Button
+                type="submit"
+                variant="ghost"
+                size="sm"
+                className="h-10 rounded-full px-3 text-[#5f5072] hover:bg-[#f3edf8] md:px-4"
+              >
+                <LogOut className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Sair</span>
+              </Button>
+            </form>
           </div>
-          <form action={logout}>
-            <Button type="submit" variant="outline" size="sm">
-              Sair
-            </Button>
-          </form>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6 bg-background min-h-[calc(100vh-3.5rem)]">
+        <main className="min-h-[calc(100vh-68px)] flex-1 overflow-auto bg-[#fbf8ff] p-5 md:p-8">
           {children}
         </main>
       </SidebarInset>

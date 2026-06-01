@@ -50,6 +50,36 @@ function validateMaterialFields(nome: string, tipo: string, quantidade: number, 
   return null
 }
 
+function getSafeImageUrl(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') return { url: null, error: null }
+
+  const rawUrl = value.trim()
+  if (!rawUrl) return { url: null, error: null }
+  if (rawUrl.length > 2048) return { url: null, error: 'URL da imagem muito longa' }
+  if (/[\u0000-\u001F\u007F]/.test(rawUrl)) return { url: null, error: 'URL da imagem invalida' }
+
+  try {
+    if (rawUrl.startsWith('/') && !rawUrl.startsWith('//')) {
+      if (/\.svg(?:$|[?#])/i.test(rawUrl)) {
+        return { url: null, error: 'Use imagens JPG, PNG ou WEBP' }
+      }
+      return { url: rawUrl, error: null }
+    }
+
+    const url = new URL(rawUrl)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return { url: null, error: 'URL da imagem deve usar http ou https' }
+    }
+    if (/\.svg(?:$|[?#])/i.test(url.pathname)) {
+      return { url: null, error: 'Use imagens JPG, PNG ou WEBP' }
+    }
+
+    return { url: url.toString(), error: null }
+  } catch {
+    return { url: null, error: 'URL da imagem invalida' }
+  }
+}
+
 export async function getMateriais() {
   const supabase = await createAuthenticatedClient()
   
@@ -123,16 +153,20 @@ export async function createMaterial(formData: FormData) {
   const custo_unitario_input = parseDecimalInput(formData.get('custo_unitario'))
   const preco_compra_input = parseDecimalInput(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
+  const imagemUrlResult = getSafeImageUrl(formData.get('imagem_url'))
   const validationError = validateMaterialFields(nome, tipo, quantidade, custo_unitario_input)
 
   if (validationError) {
     return { success: false, error: validationError }
   }
+  if (imagemUrlResult.error) {
+    return { success: false, error: imagemUrlResult.error }
+  }
 
-  let imagem_url = null
+  let imagem_url = imagemUrlResult.url
   if (imagem && imagem.size > 0) {
     try {
-      imagem_url = await uploadImagemMaterial(imagem)
+      imagem_url = (await uploadImagemMaterial(imagem)) || imagem_url
     } catch (error) {
       return {
         success: false,
@@ -185,16 +219,20 @@ export async function updateMaterial(id: string, formData: FormData) {
   const custo_unitario_input = parseDecimalInput(formData.get('custo_unitario'))
   const preco_compra_input = parseDecimalInput(formData.get('preco_compra'))
   const imagem = formData.get('imagem') as File | null
+  const imagemUrlResult = getSafeImageUrl(formData.get('imagem_url'))
   const validationError = validateMaterialFields(nome, tipo, quantidade, custo_unitario_input)
 
   if (validationError) {
     return { success: false, error: validationError }
   }
+  if (imagemUrlResult.error) {
+    return { success: false, error: imagemUrlResult.error }
+  }
 
-  let imagem_url = undefined
+  let imagem_url: string | null | undefined = imagemUrlResult.url
   if (imagem && imagem.size > 0) {
     try {
-      imagem_url = await uploadImagemMaterial(imagem)
+      imagem_url = (await uploadImagemMaterial(imagem)) || imagem_url
     } catch (error) {
       return {
         success: false,
@@ -219,6 +257,8 @@ export async function updateMaterial(id: string, formData: FormData) {
 
   if (imagem_url) {
     updateData.imagem_url = imagem_url
+  } else {
+    updateData.imagem_url = null
   }
 
   const { error } = await supabase

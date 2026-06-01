@@ -17,22 +17,30 @@ export function PWAInstallPrompt() {
   const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
-    // Check if already installed
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
     setIsStandalone(standalone)
 
-    // Check if iOS
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
     setIsIOS(ios)
+
+    const dismissed = localStorage.getItem('pwa-prompt-dismissed')
+    const dismissedTime = dismissed ? parseInt(dismissed, 10) : 0
+    const sevenDays = 7 * 24 * 60 * 60 * 1000
+    const wasDismissedRecently =
+      Number.isFinite(dismissedTime) && Date.now() - dismissedTime < sevenDays
+
+    if (standalone || wasDismissedRecently) {
+      return
+    }
 
     let promptTimeout: NodeJS.Timeout | undefined
     let iosTimeout: NodeJS.Timeout | undefined
 
-    // Listen for beforeinstallprompt event (Android/Chrome)
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
-      // Show prompt after 30 seconds of use
       promptTimeout = setTimeout(() => {
         setShowPrompt(true)
       }, 30000)
@@ -72,22 +80,7 @@ export function PWAInstallPrompt() {
     localStorage.setItem('pwa-prompt-dismissed', Date.now().toString())
   }
 
-  // Don't show if already installed
-  if (isStandalone) return null
-
-  // Check if dismissed recently
-  useEffect(() => {
-    const dismissed = localStorage.getItem('pwa-prompt-dismissed')
-    if (dismissed) {
-      const dismissedTime = parseInt(dismissed, 10)
-      const sevenDays = 7 * 24 * 60 * 60 * 1000
-      if (Date.now() - dismissedTime < sevenDays) {
-        setShowPrompt(false)
-      }
-    }
-  }, [])
-
-  if (!showPrompt) return null
+  if (isStandalone || !showPrompt) return null
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-80">

@@ -1,8 +1,8 @@
 {
-  "name": "Exclusiv Art - Gestão de Artesanato",
+  "name": "Exclusiv Art - Gestao de Artesanato",
   "short_name": "Exclusiv Art",
-  "description": "Sistema de gestão para artesanato religioso - terços, pulseiras e chaveiros",
-  "start_url": "/",
+  "description": "Sistema de gestao para artesanato religioso - tercos, pulseiras e chaveiros",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
