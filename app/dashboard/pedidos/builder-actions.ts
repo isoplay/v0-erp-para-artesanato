@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAuthenticatedClient } from '@/lib/auth'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { arredondarParaCimaMeioReal } from '@/lib/utils'
 
 async function resolveProdutoIdForCategoria(
   supabase: SupabaseClient,
@@ -212,16 +213,25 @@ export async function validarEstoqueComponentes(
 }
 
 /**
- * Calculate the final price for a composed item
- * Price = sum(component prices) + labor cost
- * Component price = cost_unitario * (1 + margin_lucro/100)
+ * Calcula o CUSTO BASE por unidade (sem margem e sem arredondamento).
+ *
+ * Regra ExclusivArt (obrigatória):
+ * - Cada material entra com seu custo real cadastrado.
+ * - NUNCA aplicar margem por componente.
+ * - NUNCA arredondar por componente ou por unidade.
+ * - Margem e arredondamento (50 centavos) são aplicados SOMENTE no valor final total do pedido,
+ *   depois de multiplicar pela quantidade de itens.
+ *
+ * Esta função retorna apenas o custo base por unidade (materiais + mão de obra).
+ * A aplicação de margem + arredondamento final acontece em criarPedidoComMontagem.
  */
 export async function calcularPrecoItemMontado(
   categoria_id: string,
   componentes: Array<{
     material_id: string
     quantidade: number
-  }>
+  }>,
+  _margemPercentual: number = 100 // Ignorado de propósito - margem só no total final
 ): Promise<{
   total_componentes: number
   maodeobra: number
@@ -248,21 +258,20 @@ export async function calcularPrecoItemMontado(
 
   const maodeobra = maodeobra_data?.valor_maodeobra || 0
 
-  // Get component prices
+  // Coleta apenas custos reais (sem margem, sem arredondamento)
   const detalhes: Array<{
     material_nome: string
     valor_unitario: number
     quantidade: number
     subtotal: number
   }> = []
-  let total_componentes = 0
+  let custoMateriais = 0
 
   for (const componente of componentes) {
     const { data, error } = await supabase
       .from('componentes_estoque')
       .select(
         `
-        margem_lucro,
         material:materiais (
           nome,
           custo_unitario
@@ -280,24 +289,25 @@ export async function calcularPrecoItemMontado(
 
     const material = data.material as any
     const custo = material?.custo_unitario || 0
-    const margem = data.margem_lucro || 0
-    const valor_unitario = custo * (1 + margem / 100)
-    const subtotal = valor_unitario * componente.quantidade
+    const subtotal = custo * componente.quantidade
 
     detalhes.push({
       material_nome: material?.nome || 'Unknown',
-      valor_unitario,
+      valor_unitario: custo,
       quantidade: componente.quantidade,
       subtotal,
     })
 
-    total_componentes += subtotal
+    custoMateriais += subtotal
   }
 
+  // Custo base por unidade (sem margem, sem arredondamento)
+  const custoBaseUnitario = custoMateriais + maodeobra
+
   return {
-    total_componentes,
+    total_componentes: custoMateriais,
     maodeobra,
-    total: total_componentes + maodeobra,
+    total: custoBaseUnitario, // agora é o custo base unitário puro
     detalhes,
   }
 }
@@ -323,9 +333,29 @@ export async function criarPedidoComMontagem(
   const supabase = await createAuthenticatedClient()
 
   try {
-    // Calculate final price
-    const precalizacao = await calcularPrecoItemMontado(tipo_produto_id, componentes)
-    const valor_total = precalizacao.total * quantidade_itens
+    // ===================================================================
+    // CÁLCULO CORRETO SEGUNDO REGRAS EXCLUSIVART (obrigatório)
+    // ===================================================================
+    // 1. Obter custo base unitário (materiais reais + mão de obra) — SEM margem e SEM arredondamento
+    // 2. Multiplicar pelo quantidade_itens → custo base TOTAL do pedido
+    // 3. Aplicar margem percentual SOMENTE sobre o custo base total
+    // 4. Arredondar para cima de R$ 0,50 SOMENTE no valor final do pedido inteiro
+    // ===================================================================
+
+    const precalizacao = await calcularPrecoItemMontado(tipo_produto_id, componentes, 100)
+
+    const custoBaseUnitario = precalizacao.total // custo base por unidade (sem margem/arredondamento)
+    const maodeobraUnitaria = precalizacao.maodeobra
+
+    // Custo base TOTAL do pedido (multiplica primeiro, depois margem)
+    const custoBaseTotal = custoBaseUnitario * quantidade_itens
+
+    // Margem aplicada sobre o total (default 100%)
+    const margemPercentual = 100
+    const valorComMargem = custoBaseTotal * (1 + margemPercentual / 100)
+
+    // Arredondamento de 50 centavos SOMENTE no valor final total do pedido
+    const valor_total = arredondarParaCimaMeioReal(valorComMargem)
 
     // Validate stock
     const componentes_total = componentes.map(c => ({
@@ -379,7 +409,8 @@ export async function criarPedidoComMontagem(
         pedido_id: pedido.id,
         produto_id: produtoId,
         quantidade: quantidade_itens,
-        valor_unitario: precalizacao.total,
+        // Armazena o valor unitário efetivo após margem + arredondamento final
+        valor_unitario: valor_total / quantidade_itens,
       })
       .select()
       .single()

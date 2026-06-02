@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAuthenticatedClient } from '@/lib/auth'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Pedido, PedidoComItens, Produto, StatusPedido, Material, ProdutoMaterial } from '@/lib/types/database'
+import { arredondarParaCimaMeioReal } from '@/lib/utils'
 
 function normalizeKey(value: string | null | undefined) {
   return String(value ?? '')
@@ -731,6 +732,7 @@ export async function createPedidoCustomizado(params: {
   componentes: Array<{ material_id: string; quantidade: number }>
   prazo_entrega: string
   observacoes: string | null
+  margem_percentual?: number
 }) {
   const supabase = await createAuthenticatedClient()
 
@@ -765,7 +767,6 @@ export async function createPedidoCustomizado(params: {
       .eq('categoria_id', params.categoria_id)
       .maybeSingle()
 
-    const valorMaodeobra = (maodeobra?.valor_maodeobra || 0) * quantidadeItens
     const materialIds = componentesSelecionados.map((componente) => componente.material_id)
 
     const { data: materiaisData, error: materiaisError } = await supabase
@@ -778,12 +779,21 @@ export async function createPedidoCustomizado(params: {
       return { success: false, error: 'Erro ao carregar materiais selecionados' }
     }
 
-    const { data: componentesData } = await supabase
-      .from('componentes_estoque')
-      .select('material_id, margem_lucro')
-      .in('material_id', materialIds)
+    // ===================================================================
+    // REGRA OBRIGATÓRIA EXCLUSIVART - CÁLCULO DE PEDIDO (createPedidoCustomizado)
+    // ===================================================================
+    // - Usar SEMPRE o custo real do material (nunca margem por componente)
+    // - Somar custo total dos materiais (considerando quantidade_itens)
+    // - Somar mão de obra × quantidade_itens
+    // - Formar custo base total
+    // - Aplicar margem % SOMENTE sobre o custo base total do pedido
+    // - Arredondar para cima de R$ 0,50 SOMENTE no valor final do pedido
+    // - NUNCA arredondar por unidade ou por componente
+    // ===================================================================
 
-    let valorTotal = valorMaodeobra
+    const margemPercentual = Math.max(0, params.margem_percentual ?? 100)
+
+    let custoMateriaisTotal = 0
     const faltantes: string[] = []
 
     for (const componente of componentesSelecionados) {
@@ -802,12 +812,8 @@ export async function createPedidoCustomizado(params: {
         )
       }
 
-      const componenteInfo = componentesData?.find(
-        (item) => item.material_id === componente.material_id
-      )
-      const margem = componenteInfo?.margem_lucro ?? 0
-      const precoUnit = (material.custo_unitario || 0) * (1 + margem / 100)
-      valorTotal += precoUnit * quantidadeTotal
+      const custoUnit = material.custo_unitario || 0
+      custoMateriaisTotal += custoUnit * quantidadeTotal
     }
 
     if (faltantes.length > 0) {
@@ -816,6 +822,11 @@ export async function createPedidoCustomizado(params: {
         error: `Estoque insuficiente: ${faltantes.join(', ')}`,
       }
     }
+
+    const maodeobraTotal = (maodeobra?.valor_maodeobra || 0) * quantidadeItens
+    const custoBase = custoMateriaisTotal + maodeobraTotal
+    const valorComMargem = custoBase * (1 + margemPercentual / 100)
+    const valorTotal = arredondarParaCimaMeioReal(valorComMargem)
 
     const produtoId = await resolveProdutoIdForCategoria(supabase, params.categoria_id)
     if (!produtoId) {

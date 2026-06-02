@@ -26,6 +26,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import type { CategoriaProduto, ComponenteEstoque, GrupoComponente, Material } from '@/lib/types/database'
 import { createPedidoCustomizado } from './actions'
+import { arredondarParaCimaMeioReal } from '@/lib/utils'
 
 interface ComponenteSelecionado {
   grupo_id: string
@@ -34,7 +35,6 @@ interface ComponenteSelecionado {
   material_nome: string
   quantidade: number
   custo_unit: number
-  preco_unit: number
   unidade: string
   estoque_atual: number
 }
@@ -89,6 +89,9 @@ export function PedidoForm({
   const [grupoAtual, setGrupoAtual] = useState('')
   const [materialAtual, setMaterialAtual] = useState('')
 
+  // Margem de lucro configurável por pedido (padrão 100% conforme regra)
+  const [margemPercentual, setMargemPercentual] = useState(100)
+
   const categoriaAtual = categorias.find((categoria) => categoria.id === categoriaSelecionada)
   const gruposCat = useMemo(
     () =>
@@ -98,7 +101,6 @@ export function PedidoForm({
     [categoriaSelecionada, grupos]
   )
   const grupoAtualObj = gruposCat.find((grupo) => grupo.id === grupoAtual)
-  const componentesGrupo = componentes.filter((componente) => componente.grupo_id === grupoAtual)
   const materiaisDoTipo = useMemo(() => {
     const tipo = normalizeKey(grupoAtualObj?.nome)
     if (!tipo) return []
@@ -112,15 +114,23 @@ export function PedidoForm({
     (acc, componente) => acc + componente.custo_unit * componente.quantidade,
     0
   )
-  const precoMateriaisUnitario = componentesSelecionados.reduce(
-    (acc, componente) => acc + componente.preco_unit * componente.quantidade,
-    0
-  )
   const maodeobraUnitario = maodeobra[categoriaSelecionada] || 0
-  const custoTotal = custoMateriaisUnitario * quantidadeItens
-  const precoMateriaisTotal = precoMateriaisUnitario * quantidadeItens
+
+  // ===================================================================
+  // CÁLCULO DE VISUALIZAÇÃO NO FORMULÁRIO (segue rigorosamente a regra ExclusivArt)
+  // ===================================================================
+  // - Componentes mostram custo real (sem margem)
+  // - Margem e arredondamento são aplicados SOMENTE no total final do pedido
+  // - NUNCA por componente, NUNCA por unidade antes de multiplicar quantidade
+  // ===================================================================
+  const custoMateriaisTotal = custoMateriaisUnitario * quantidadeItens
   const maodeobraTotal = maodeobraUnitario * quantidadeItens
-  const valorFinal = precoMateriaisTotal + maodeobraTotal
+  const custoBase = custoMateriaisTotal + maodeobraTotal
+  const margemAplicada = margemPercentual
+  const valorComMargem = custoBase * (1 + margemAplicada / 100)
+  const valorFinalArredondado = arredondarParaCimaMeioReal(valorComMargem)
+  const ajusteArredondamento = valorFinalArredondado - valorComMargem
+  const lucroEstimado = valorFinalArredondado - custoBase
 
   function resetForm() {
     setClienteNome('')
@@ -134,6 +144,7 @@ export function PedidoForm({
     setObservacoes('')
     setGrupoAtual('')
     setMaterialAtual('')
+    setMargemPercentual(100)
   }
 
   function handleCategoriaChange(value: string) {
@@ -152,12 +163,8 @@ export function PedidoForm({
     const material = materiaisDoTipo.find((item) => item.id === materialAtual)
     if (!material || !grupoAtualObj) return
 
-    const componenteVinculado = componentesGrupo.find(
-      (componente) => componente.material_id === material.id
-    )
-    const margem = componenteVinculado?.margem_lucro ?? 0
+    // Usar sempre o custo real cadastrado no material. Sem margem por componente.
     const custoUnit = material.custo_unitario || 0
-    const precoUnit = custoUnit * (1 + margem / 100)
 
     setComponentesSelecionados((prev) => {
       const existingIndex = prev.findIndex(
@@ -182,7 +189,6 @@ export function PedidoForm({
           material_nome: material.nome,
           quantidade: 1,
           custo_unit: custoUnit,
-          preco_unit: precoUnit,
           unidade: material.unidade,
           estoque_atual: getEstoqueAtual(material),
         },
@@ -257,6 +263,7 @@ export function PedidoForm({
           })),
           prazo_entrega: prazoEntrega,
           observacoes: observacoes || null,
+          margem_percentual: margemPercentual,
         })
 
         if (result.success) {
@@ -319,18 +326,38 @@ export function PedidoForm({
               </div>
             </div>
 
-            <div className="space-y-2 rounded-lg bg-muted/50 p-4">
-              <div className="flex justify-between text-sm">
-                <span>Custo de materiais</span>
-                <span>{formatCurrency(custoTotal)}</span>
+            <div className="space-y-2 rounded-lg bg-muted/50 p-4 text-sm">
+              <div className="flex justify-between">
+                <span>Custo dos materiais</span>
+                <span>{formatCurrency(custoMateriaisTotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between">
                 <span>Mão de obra</span>
                 <span>{formatCurrency(maodeobraTotal)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Custo base</span>
+                <span>{formatCurrency(custoBase)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Margem aplicada</span>
+                <span>{margemAplicada}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Valor com margem</span>
+                <span>{formatCurrency(valorComMargem)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Arredondamento</span>
+                <span>{formatCurrency(ajusteArredondamento)}</span>
+              </div>
               <div className="flex justify-between border-t pt-2 text-base font-semibold">
-                <span>Total</span>
-                <span className="text-green-700">{formatCurrency(valorFinal)}</span>
+                <span>Preço final</span>
+                <span className="text-green-700">{formatCurrency(valorFinalArredondado)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Lucro estimado</span>
+                <span className="text-green-700 font-medium">{formatCurrency(lucroEstimado)}</span>
               </div>
             </div>
 
@@ -409,7 +436,7 @@ export function PedidoForm({
             <CardTitle className="text-lg">Tipo de Produto</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
               <div className="space-y-2">
                 <Label htmlFor="categoria">Produto *</Label>
                 <Select value={categoriaSelecionada} onValueChange={handleCategoriaChange}>
@@ -435,7 +462,21 @@ export function PedidoForm({
                   onChange={(event) => setQuantidadeItens(Math.max(1, parseInt(event.target.value) || 1))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="margem">Margem (%) *</Label>
+                <Input
+                  id="margem"
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={margemPercentual}
+                  onChange={(event) => setMargemPercentual(Math.max(0, parseInt(event.target.value) || 0))}
+                />
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Margem aplicada sobre o custo base total (materiais + mão de obra). Padrão: 100%.
+            </p>
           </CardContent>
         </Card>
 
@@ -555,7 +596,7 @@ export function PedidoForm({
                       <ChevronUp className="h-3 w-3" />
                     </Button>
                     <span className="w-24 text-right text-sm font-semibold">
-                      {formatCurrency(componente.preco_unit * componente.quantidade)}
+                      {formatCurrency(componente.custo_unit * componente.quantidade)}
                     </span>
                     <Button
                       size="icon"
@@ -615,16 +656,20 @@ export function PedidoForm({
 
           <div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm">
             <div className="flex justify-between gap-4">
-              <span>Materiais</span>
-              <span>{formatCurrency(precoMateriaisTotal)}</span>
+              <span>Custo materiais</span>
+              <span>{formatCurrency(custoMateriaisTotal)}</span>
             </div>
             <div className="flex justify-between gap-4">
               <span>Mão de obra</span>
               <span>{formatCurrency(maodeobraTotal)}</span>
             </div>
+            <div className="flex justify-between gap-4">
+              <span>Custo base</span>
+              <span>{formatCurrency(custoBase)}</span>
+            </div>
             <div className="flex justify-between gap-4 border-t pt-2 text-base font-semibold">
-              <span>Total</span>
-              <span className="text-green-700">{formatCurrency(valorFinal)}</span>
+              <span>Preço final ({margemAplicada}%)</span>
+              <span className="text-green-700">{formatCurrency(valorFinalArredondado)}</span>
             </div>
           </div>
 
