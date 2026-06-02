@@ -403,4 +403,35 @@ App Mobile
 
 ---
 
-**STATUS FINAL: 🚀 PRONTO PARA RODAR!**
+## 📱 CORREÇÕES DE DISPOSITIVOS E RESPONSIVIDADE (continuação da sessão)
+
+**Problema relatado**: "o formato dependendo do dispositivo algumas funções não funcionam"
+
+### Causas raiz identificadas e corrigidas
+- Parsing de datas (`new Date('YYYY-MM-DD')`) inconsistente entre navegadores (Chrome vs Safari/iOS) → off-by-1 day em prazos, financeiro, etc.
+- `100vh` no dashboard → problemas com keyboard, barras de navegador e safe-area em mobile real.
+- FAB desativado (retornava null).
+- Menu lateral mobile (Sheet) não fechava automaticamente após navegação.
+- Botões de ação com targets pequenos (h-8/w-8 < 44px recomendado para touch).
+- Detecção de iOS no prompt PWA incompleta.
+- Clique fora em autocomplete só via mousedown.
+
+### Mudanças realizadas
+- **`lib/utils.ts`**: Adicionados `parseDateString`, `formatDateBR`, `getTodayDateString`, `toDateInputValue` (helpers centralizados e seguros usando date-fns parseISO).
+- **`app/dashboard/pedidos/pedido-form.tsx`**, **`pedidos-content.tsx`**, **`financeiro/actions.ts`**, **`financeiro-content.tsx`**, **`dashboard-content.tsx`**, **`cliente-autocomplete.tsx`**: Substituídos todos os `new Date(dateStr)` de strings de data por helpers → datas consistentes em qualquer dispositivo.
+- **`app/dashboard/layout.tsx`**: `100dvh` + `min-h` no header + `env(safe-area-inset-*)` no header e main (melhor suporte a iPhone notch, PWA standalone, Android com barras dinâmicas).
+- **`components/floating-action-button.tsx`**: Reativado FAB só em mobile + link com `?novo=1`.
+- **`app/dashboard/pedidos/pedidos-content.tsx`**: Suporte completo a `?novo=1` (auto-abre o dialog de novo pedido vindo do FAB; limpa a URL ao fechar).
+- **`components/app-sidebar.tsx`**: Links do menu agora fecham o drawer mobile (`setOpenMobile(false)`) após clique/navegação.
+- **`components/cliente-autocomplete.tsx`**: `pointerdown` em vez de `mousedown` (melhor em touch).
+- **`components/pwa-install-prompt.tsx`**: Detecção de iOS/iPadOS robusta (inclui iPadOS moderno via MacIntel + maxTouchPoints).
+- **Touch targets**: Bump de `h-8 w-8` → `h-9 w-9` nos botões de ação de tabelas (estoque, pedidos, produtos, financeiro) e controles de quantidade no formulário de pedidos.
+- **`hooks/use-mobile.ts`**: Melhorado (usa `mql.matches` consistentemente).
+- **`components/ui/use-mobile.tsx`**: Re-export para eliminar duplicação.
+- Typecheck validado após todas as alterações.
+
+**Impacto**: Pedidos, prazos, financeiro, dashboard e navegação agora funcionam de forma consistente em desktop, mobile Chrome, Safari/iOS, tablets, PWA instalada, diferentes fusos e viewports reais.
+
+---
+
+**STATUS ATUAL: ✅ FIXES DE DISPOSITIVO CONTINUADOS E VALIDADOS (typecheck OK)**

@@ -26,7 +26,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import type { CategoriaProduto, ComponenteEstoque, GrupoComponente, Material } from '@/lib/types/database'
 import { createPedidoCustomizado } from './actions'
-import { arredondarParaCimaMeioReal } from '@/lib/utils'
+import { arredondarParaCimaMeioReal, formatDateBR } from '@/lib/utils'
 
 interface ComponenteSelecionado {
   grupo_id: string
@@ -301,7 +301,7 @@ export function PedidoForm({
                 <p className="text-sm">{categoriaAtual?.nome}</p>
                 <p className="text-sm text-muted-foreground">
                   {quantidadeItens} unidade(s) até{' '}
-                  {new Date(prazoEntrega).toLocaleDateString('pt-BR')}
+                  {formatDateBR(prazoEntrega)}
                 </p>
               </div>
             </div>
@@ -572,10 +572,10 @@ export function PedidoForm({
                     <Button
                       size="icon"
                       variant="outline"
-                      className="h-8 w-8"
+                      className="h-9 w-9"
                       onClick={() => alterarQuantidade(index, -1)}
                     >
-                      <ChevronDown className="h-3 w-3" />
+                      <ChevronDown className="h-4 w-4" />
                     </Button>
                     <Input
                       aria-label={`Quantidade de ${componente.material_nome}`}
@@ -590,10 +590,10 @@ export function PedidoForm({
                     <Button
                       size="icon"
                       variant="outline"
-                      className="h-8 w-8"
+                      className="h-9 w-9"
                       onClick={() => alterarQuantidade(index, 1)}
                     >
-                      <ChevronUp className="h-3 w-3" />
+                      <ChevronUp className="h-4 w-4" />
                     </Button>
                     <span className="w-24 text-right text-sm font-semibold">
                       {formatCurrency(componente.custo_unit * componente.quantidade)}
@@ -601,10 +601,10 @@ export function PedidoForm({
                     <Button
                       size="icon"
                       variant="destructive"
-                      className="h-8 w-8"
+                      className="h-9 w-9"
                       onClick={() => removerComponente(index)}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

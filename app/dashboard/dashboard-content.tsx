@@ -5,6 +5,7 @@ import type { ComponentType, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { formatDateBR, parseDateString } from '@/lib/utils'
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -37,7 +38,7 @@ function RelativeTime({ date }: { date: string }) {
     return <span className="text-xs text-muted-foreground">...</span>
   }
 
-  const parsedDate = new Date(date)
+  const parsedDate = parseDateString(date) || new Date(date)
   if (Number.isNaN(parsedDate.getTime())) {
     return <span className="text-xs text-muted-foreground">data indisponível</span>
   }
@@ -117,16 +118,7 @@ function asNumber(value: unknown) {
 }
 
 function formatShortDate(value: string | null) {
-  if (!value) {
-    return '-'
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return '-'
-  }
-
-  return format(date, 'dd/MM', { locale: ptBR })
+  return formatDateBR(value, 'dd/MM')
 }
 
 function EmptyState({ children }: { children: ReactNode }) {

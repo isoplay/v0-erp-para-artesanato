@@ -180,7 +180,7 @@ export default function ComponentesConfigContent({ tipos }: ComponentesConfigPro
                             type="submit"
                             form={`edit-${tipo.nome}`}
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
                             disabled={isPending || !editValue.trim()}
                             aria-label="Salvar"
                           >
@@ -190,7 +190,7 @@ export default function ComponentesConfigContent({ tipos }: ComponentesConfigPro
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
                             onClick={() => {
                               setEditingTipo(null)
                               setEditValue('')
@@ -206,7 +206,7 @@ export default function ComponentesConfigContent({ tipos }: ComponentesConfigPro
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8"
+                          className="h-9 w-9"
                           onClick={() => handleStartEdit(tipo)}
                           disabled={isPending}
                           aria-label={`Editar ${tipo.nome}`}

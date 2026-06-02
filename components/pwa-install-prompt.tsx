@@ -22,7 +22,11 @@ export function PWAInstallPrompt() {
       (navigator as Navigator & { standalone?: boolean }).standalone === true
     setIsStandalone(standalone)
 
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    // Detecção de iOS mais robusta (iPad moderno reporta como Mac + touch points)
+    const ua = navigator.userAgent
+    const iosUA = /iPad|iPhone|iPod/.test(ua)
+    const isIPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+    const ios = iosUA || isIPadOS
     setIsIOS(ios)
 
     const dismissed = localStorage.getItem('pwa-prompt-dismissed')
@@ -83,7 +87,7 @@ export function PWAInstallPrompt() {
   if (isStandalone || !showPrompt) return null
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-80">
+    <div className="fixed bottom-4 left-4 right-[4.25rem] z-50 md:left-auto md:right-4 md:w-80">
       <Card className="border-primary/20 shadow-lg">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">

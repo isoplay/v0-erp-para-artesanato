@@ -6,6 +6,7 @@ import { User, History, Phone } from 'lucide-react'
 import { searchClientes, type ClienteHistorico } from '@/app/dashboard/pedidos/actions'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { parseDateString } from '@/lib/utils'
 
 type ClienteAutocompleteProps = {
   value: string
@@ -38,15 +39,15 @@ export function ClienteAutocomplete({
   const [isLoading, setIsLoading] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking/tapping outside (pointerdown works for mouse + touch devices)
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handlePointerOutside(event: PointerEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('pointerdown', handlePointerOutside)
+    return () => document.removeEventListener('pointerdown', handlePointerOutside)
   }, [])
 
   // Debounced search
@@ -130,7 +131,7 @@ export function ClienteAutocomplete({
                     {formatCurrency(cliente.valor_total)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {formatDistanceToNow(new Date(cliente.ultimo_pedido), {
+                    {formatDistanceToNow(parseDateString(cliente.ultimo_pedido) || new Date(cliente.ultimo_pedido), {
                       addSuffix: true,
                       locale: ptBR,
                     })}

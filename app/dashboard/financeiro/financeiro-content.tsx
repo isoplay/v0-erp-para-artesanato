@@ -54,6 +54,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { formatDateBR, getTodayDateString, toDateInputValue } from '@/lib/utils'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -242,7 +243,7 @@ export function FinanceiroContent({
                   name="data"
                   type="date"
                   required
-                  defaultValue={new Date().toISOString().split('T')[0]}
+                  defaultValue={getTodayDateString()}
                 />
               </div>
               <DialogFooter>
@@ -425,7 +426,7 @@ export function FinanceiroContent({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(despesa.data), 'dd/MM/yyyy', { locale: ptBR })}
+                        {formatDateBR(despesa.data, 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell className="text-right font-medium text-red-600">
                         -{formatCurrency(despesa.valor)}
@@ -433,7 +434,7 @@ export function FinanceiroContent({
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-9 w-9">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -524,7 +525,7 @@ export function FinanceiroContent({
                   name="data"
                   type="date"
                   required
-                  defaultValue={selectedDespesa.data.split('T')[0]}
+                  defaultValue={toDateInputValue(selectedDespesa.data)}
                 />
               </div>
               <DialogFooter>

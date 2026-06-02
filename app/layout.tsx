@@ -3,6 +3,7 @@ import { Poppins } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
+import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 const poppins = Poppins({ 
@@ -58,10 +59,17 @@ export default function RootLayout({
           está na primeira linha deste arquivo.
       */}
       <body className={`${poppins.variable} font-sans antialiased`} suppressHydrationWarning>
-        {children}
-        <Toaster position="top-right" richColors />
-        <ServiceWorkerRegistration />
-        <Analytics />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster position="top-right" richColors />
+          <ServiceWorkerRegistration />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )

@@ -67,13 +67,19 @@ const menuItems = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { state } = useSidebar()
+  const { state, isMobile, setOpenMobile } = useSidebar()
   const isCollapsed = state === 'collapsed'
+
+  const handleNavClick = () => {
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+  }
 
   return (
     <Sidebar collapsible="icon" className="[&_[data-sidebar=sidebar]]:bg-[#c8adeb]">
       <SidebarHeader className="border-b border-white/15 px-4 py-7">
-        <Link href="/dashboard" className="flex items-center justify-center">
+        <Link href="/dashboard" onClick={handleNavClick} className="flex items-center justify-center">
           <div
             className={cn(
               'relative drop-shadow-[0_12px_24px_rgba(80,48,122,0.16)] transition-all duration-200',
@@ -116,7 +122,7 @@ export function AppSidebar() {
                         isActive && 'bg-white/55 font-semibold text-[#4f4261] shadow-[0_12px_28px_rgba(80,48,122,0.12)]'
                       )}
                     >
-                      <Link href={item.url}>
+                      <Link href={item.url} onClick={handleNavClick}>
                         <item.icon className={cn('h-5 w-5', isActive ? 'text-[#4f4261]' : 'text-[#5f5072]')} />
                         <span className="font-medium">{item.title}</span>
                       </Link>

@@ -11,8 +11,11 @@ export async function getDespesas(mes?: number, ano?: number) {
   let query = supabase.from('despesas').select('*').order('data', { ascending: false })
 
   if (mes !== undefined && ano !== undefined) {
-    const startDate = new Date(ano, mes, 1).toISOString().split('T')[0]
-    const endDate = new Date(ano, mes + 1, 0).toISOString().split('T')[0]
+    // Construir strings de data diretamente (YYYY-MM-DD) para evitar problemas de fuso horário / parsing por ambiente (servidor vs cliente)
+    const startDate = `${ano}-${String(mes + 1).padStart(2, '0')}-01`
+    // Último dia do mês: usar data do próximo mês -1 dia de forma segura via Date, mas forçar o dia local
+    const lastDay = new Date(ano, mes + 1, 0).getDate()
+    const endDate = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     query = query.gte('data', startDate).lte('data', endDate)
   }
 
@@ -107,8 +110,9 @@ export async function getFinanceiroResumo(mes: number, ano: number) {
 
   const startDate = new Date(ano, mes, 1).toISOString()
   const endDate = new Date(ano, mes + 1, 0).toISOString()
-  const startDateOnly = new Date(ano, mes, 1).toISOString().split('T')[0]
-  const endDateOnly = new Date(ano, mes + 1, 0).toISOString().split('T')[0]
+  const startDateOnly = `${ano}-${String(mes + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(ano, mes + 1, 0).getDate()
+  const endDateOnly = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
   const { data: pedidos } = await supabase
     .from('pedidos')

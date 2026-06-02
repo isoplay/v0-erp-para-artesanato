@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -39,7 +39,8 @@ import type { Material, PedidoComItens, StatusPedido } from '@/lib/types/databas
 import { deletePedido, updatePedidoStatus } from './actions'
 import { PedidoForm } from './pedido-form'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { formatDateBR } from '@/lib/utils'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -49,8 +50,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(date: string | null) {
-  if (!date) return '-'
-  return new Intl.DateTimeFormat('pt-BR').format(new Date(date))
+  return formatDateBR(date)
 }
 
 const STATUS_COLORS: { [key: string]: string } = {
@@ -95,6 +95,14 @@ export function PedidosContent({
   const [selectedPedido, setSelectedPedido] = useState<PedidoComItens | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Suporte a ?novo=1 (usado pelo FAB mobile para abrir direto o formulário de novo pedido)
+  useEffect(() => {
+    if (searchParams.get('novo') === '1') {
+      setIsAddOpen(true)
+    }
+  }, [searchParams])
 
   const filteredPedidos = pedidos.filter((p) => {
     const matchesSearch =
@@ -146,7 +154,16 @@ export function PedidosContent({
         </div>
 
         {/* Dialog: Novo Pedido */}
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <Dialog
+          open={isAddOpen}
+          onOpenChange={(open) => {
+            setIsAddOpen(open)
+            // Limpa o ?novo da URL ao fechar (para não reabrir em refresh/back)
+            if (!open && searchParams.get('novo') === '1') {
+              router.replace('/dashboard/pedidos', { scroll: false })
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -269,7 +286,7 @@ export function PedidosContent({
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-9 w-9">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
